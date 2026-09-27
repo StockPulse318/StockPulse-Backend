@@ -1,0 +1,27 @@
+# Build output
+bin/
+obj/
+
+# Rider / JetBrains IDE
+.idea/
+*.DotSettings.user
+
+# VS artifacts
+.vs/
+*.user
+*.suo
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# SQLite database files — never commit live data
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
