@@ -1,0 +1,25 @@
+{
+  "DatabasePath": "stockpulse.db",
+
+  "JwtSettings": {
+    "Secret": "REPLACE-WITH-A-STRONG-SECRET-MINIMUM-32-CHARACTERS"
+  },
+
+  "AllowedOrigins": [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:7001"
+  ],
+
+  "SeedManager": {
+    "Username": "admin",
+    "Password": "REPLACE-WITH-A-STRONG-PASSWORD"
+  },
+
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Information"
+    }
+  }
+}
