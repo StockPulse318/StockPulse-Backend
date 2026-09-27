@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>StockPulse.BLL</RootNamespace>
+    <AssemblyName>StockPulse.BLL</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PBKDF2 hashing is in System.Security.Cryptography — no extra package needed.
+         Microsoft.AspNetCore.Cryptography.KeyDerivation is the clean .NET 8 surface
+         for PBKDF2 without pulling in the full ASP.NET runtime. -->
+    <PackageReference Include="Microsoft.AspNetCore.Cryptography.KeyDerivation" Version="8.0.8" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StockPulse.Domain\StockPulse.Domain.csproj" />
+    <ProjectReference Include="..\StockPulse.DAL\StockPulse.DAL.csproj" />
+  </ItemGroup>
+
+</Project>
