@@ -2,30 +2,10 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using StockPulse.API.Middleware;
+using StockPulse.API.Seeding;
 using StockPulse.API.Services;
 using StockPulse.BLL.Extensions;
 using StockPulse.DAL;
-
-// Load .env file variables into the process environment before the host builder
-// reads configuration — this means they flow into IConfiguration automatically
-// via the standard environment variable provider that ASP.NET Core includes by default.
-DotNetEnv.Env.TraversePath().Load();
-
-// Map the flat .env key names to the nested paths IConfiguration expects.
-// This keeps appsettings.json free of any secrets while still letting the
-// rest of the app read config through the standard IConfiguration abstraction.
-Environment.SetEnvironmentVariable("JwtSettings__Secret",   Environment.GetEnvironmentVariable("JWT_SECRET"));
-Environment.SetEnvironmentVariable("JwtSettings__Issuer",   Environment.GetEnvironmentVariable("JWT_ISSUER"));
-Environment.SetEnvironmentVariable("JwtSettings__Audience", Environment.GetEnvironmentVariable("JWT_AUDIENCE"));
-Environment.SetEnvironmentVariable("JwtSettings__ExpiryHours", Environment.GetEnvironmentVariable("JWT_EXPIRY_HOURS"));
-Environment.SetEnvironmentVariable("DatabasePath",          Environment.GetEnvironmentVariable("DATABASE_PATH"));
-
-// ALLOWED_ORIGINS is a comma-separated string in .env; split and map to indexed
-// keys so ASP.NET Core's array binding picks them up correctly.
-var rawOrigins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ?? string.Empty;
-var origins = rawOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries);
-for (int i = 0; i < origins.Length; i++)
-    Environment.SetEnvironmentVariable($"AllowedOrigins__{i}", origins[i].Trim());
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,8 +21,15 @@ builder.Services.AddStockPulseBackend(dbPath);
 // ---------------------------------------------------------------------------
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+
+// In Development: value comes from appsettings.Development.json (gitignored).
+// In Production:  value comes from the platform environment variable
+//                 JwtSettings__Secret (double-underscore = nested key in ASP.NET Core).
 var secret = jwtSettings["Secret"]
-    ?? throw new InvalidOperationException("JWT_SECRET is not set. Add it to your .env file.");
+    ?? throw new InvalidOperationException(
+        "JwtSettings:Secret is not configured. " +
+        "Add it to appsettings.Development.json locally, " +
+        "or set the JwtSettings__Secret environment variable in production.");
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -87,14 +74,14 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 // ---------------------------------------------------------------------------
-// Schema initialisation — idempotent, runs on every startup
+// Schema initialisation + seeding — both idempotent, safe on every startup
 // ---------------------------------------------------------------------------
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
     await db.InitializeAsync();
-    await StockPulse.API.Seeding.DatabaseSeeder.SeedAsync(db);
+    await DatabaseSeeder.SeedAsync(db, app.Configuration);
 }
 
 // ---------------------------------------------------------------------------

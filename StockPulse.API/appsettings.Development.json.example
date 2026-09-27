@@ -2,7 +2,7 @@
   "DatabasePath": "stockpulse.db",
 
   "JwtSettings": {
-    "Secret": "dev-local-secret-replace-this-before-deploying-ok"
+    "Secret": "REPLACE-WITH-A-STRONG-SECRET-MINIMUM-32-CHARACTERS"
   },
 
   "AllowedOrigins": [
@@ -13,7 +13,7 @@
 
   "SeedManager": {
     "Username": "admin",
-    "Password": "Admin@1234"
+    "Password": "REPLACE-WITH-A-STRONG-PASSWORD"
   },
 
   "Logging": {

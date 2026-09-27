@@ -6,17 +6,17 @@ using StockPulse.DAL;
 namespace StockPulse.API.Seeding;
 
 /// <summary>
-/// Seeds the database with an initial Warehouse Manager account if no users exist.
-/// Runs once at startup — safe to leave in permanently since it checks before inserting.
-/// Credentials are read from environment variables so they are never hardcoded.
+/// Seeds the database with an initial Warehouse Manager account on first run.
+/// Does nothing if any users already exist — safe to leave running permanently.
+/// Credentials are read from configuration so they are never hardcoded.
 /// </summary>
 public static class DatabaseSeeder
 {
     private const int Pbkdf2Iterations = 310_000;
-    private const int SaltSizeBytes = 16;
-    private const int HashSizeBytes = 32;
+    private const int SaltSizeBytes    = 16;
+    private const int HashSizeBytes    = 32;
 
-    public static async Task SeedAsync(DatabaseInitializer db)
+    public static async Task SeedAsync(DatabaseInitializer db, IConfiguration configuration)
     {
         await using var connection = await db.CreateConnectionAsync();
 
@@ -24,14 +24,12 @@ public static class DatabaseSeeder
         if (userCount > 0)
             return;
 
-        var username = Environment.GetEnvironmentVariable("SEED_MANAGER_USERNAME") ?? "admin";
-        var password = Environment.GetEnvironmentVariable("SEED_MANAGER_PASSWORD") ?? "Admin@1234";
-
-        var hash = HashPassword(password);
+        var username = configuration["SeedManager:Username"] ?? "admin";
+        var password = configuration["SeedManager:Password"] ?? "Admin@1234";
 
         await connection.ExecuteAsync(
             "INSERT INTO Users (Username, PasswordHash, Role) VALUES (@Username, @PasswordHash, @Role);",
-            new { Username = username, PasswordHash = hash, Role = "Warehouse Manager" });
+            new { Username = username, PasswordHash = HashPassword(password), Role = "Warehouse Manager" });
     }
 
     private static string HashPassword(string password)

@@ -22,8 +22,8 @@ packages/
 *.db-shm
 *.db-wal
 
-# Local environment secrets
-StockPulse.API/.env
+# Local developer config — contains secrets, never commit
+appsettings.Development.json
 
 # Local developer notes — not for the repo
 NOTES.md

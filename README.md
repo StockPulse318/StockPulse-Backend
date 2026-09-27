@@ -133,13 +133,14 @@ cd StockPulse-Backend
 dotnet restore StockPulse.sln
 ```
 
-Set a JWT secret in `StockPulse.API/appsettings.json`:
+Copy the development config example and fill in your values:
 
-```json
-"JwtSettings": {
-  "Secret": "your-secret-at-least-32-characters-long"
-}
+```bash
+cp StockPulse.API/appsettings.Development.json.example StockPulse.API/appsettings.Development.json
 ```
+
+At minimum, set a `JwtSettings.Secret` (32+ characters) in `appsettings.Development.json`.
+This file is gitignored — it never gets committed.
 
 Run:
 
@@ -147,22 +148,26 @@ Run:
 dotnet run --project StockPulse.API/StockPulse.API.csproj
 ```
 
-The database file is created automatically on first run. No migrations needed.
+The database and first manager account are created automatically on first run.
 
 ---
 
 ## Configuration
 
-All configuration lives in `StockPulse.API/appsettings.json`. Environment variables override any key using the standard ASP.NET Core double-underscore convention:
+`appsettings.json` is committed and contains non-secret defaults.
+Secrets go in `appsettings.Development.json` locally (gitignored — copy from `.example`).
+In production, set them as platform environment variables using ASP.NET Core’s double-underscore convention for nested keys:
 
-| Key | Purpose |
-|-----|---------|
-| `DatabasePath` | Path to the SQLite file |
-| `JwtSettings__Secret` | Signing key — keep this out of source control |
-| `JwtSettings__Issuer` | Token issuer string |
-| `JwtSettings__Audience` | Token audience string |
-| `JwtSettings__ExpiryHours` | Token lifetime in hours (default: 8) |
-| `AllowedOrigins__0` | First allowed CORS origin |
+| Key | Where to set it |
+|-----|------|
+| `JwtSettings__Secret` | `appsettings.Development.json` locally / env var in production |
+| `JwtSettings__Issuer` | `appsettings.json` (not a secret) |
+| `JwtSettings__Audience` | `appsettings.json` (not a secret) |
+| `JwtSettings__ExpiryHours` | `appsettings.json` (not a secret) |
+| `DatabasePath` | `appsettings.json` / env var if using a mounted volume |
+| `AllowedOrigins__0` | `appsettings.Development.json` locally / env var in production |
+| `SeedManager__Username` | `appsettings.Development.json` locally / env var in production |
+| `SeedManager__Password` | `appsettings.Development.json` locally / env var in production |
 
 ---
 
