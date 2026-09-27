@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using StockPulse.API.Middleware;
 using StockPulse.API.Seeding;
 using StockPulse.API.Services;
@@ -56,6 +57,32 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title   = "StockPulse API",
+        Version = "v1",
+        Description = "Warehouse Inventory Management — REST API"
+    });
+
+    // Adds the Authorize button to Swagger UI so the frontend team can paste
+    // a token and test protected endpoints directly in the browser.
+    var jwtScheme = new OpenApiSecurityScheme
+    {
+        Name         = "Authorization",
+        Type         = SecuritySchemeType.Http,
+        Scheme       = "bearer",
+        BearerFormat = "JWT",
+        In           = ParameterLocation.Header,
+        Reference    = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+    };
+
+    options.AddSecurityDefinition("Bearer", jwtScheme);
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement { { jwtScheme, [] } });
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -64,6 +91,13 @@ using (var scope = app.Services.CreateScope())
     await db.InitializeAsync();
     await DatabaseSeeder.SeedAsync(db, app.Configuration);
 }
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "StockPulse API v1");
+    options.RoutePrefix = "docs";
+});
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("FrontendPolicy");
