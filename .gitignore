@@ -22,6 +22,9 @@ packages/
 *.db-shm
 *.db-wal
 
+# Local environment secrets
+StockPulse.API/.env
+
 # Local developer notes — not for the repo
 NOTES.md
 

@@ -23,6 +23,10 @@ public sealed class ProductsController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var result = await _productService.GetAllAsync();
+
+        if (result.IsFailure)
+            return StatusCode(500, new { error = result.ErrorMessage });
+
         return Ok(result.Value!.Select(MapToResponse));
     }
 
@@ -31,6 +35,10 @@ public sealed class ProductsController : ControllerBase
     public async Task<IActionResult> GetLowStock()
     {
         var result = await _productService.GetLowStockAsync();
+
+        if (result.IsFailure)
+            return StatusCode(500, new { error = result.ErrorMessage });
+
         return Ok(result.Value!.Select(MapToResponse));
     }
 

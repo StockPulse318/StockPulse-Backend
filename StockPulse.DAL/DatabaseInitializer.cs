@@ -18,8 +18,8 @@ public sealed class DatabaseInitializer
     public DatabaseInitializer(string databaseFilePath)
     {
         // WAL (Write-Ahead Log) mode dramatically improves concurrent read throughput
-        // because readers don't block writers and vice versa — critical for a WPF app
-        // where background async queries run alongside user-triggered stock operations.
+        // because readers don't block writers and vice versa — important for an API
+        // handling multiple simultaneous requests against the same embedded database.
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databaseFilePath,
