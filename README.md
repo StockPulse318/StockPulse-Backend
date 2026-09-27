@@ -4,14 +4,6 @@
 
 ---
 
-## Overview
-
-StockPulse Backend is the data and business logic foundation of the StockPulse Warehouse Management System. It provides a fully async, thread-safe, and role-governed backend stack designed to plug directly into a WPF desktop frontend.
-
-The stack is deliberately lightweight — no ORM bloat, no runtime framework overhead. Raw SQL through Dapper, ACID-compliant transactions enforced at the service layer, and PBKDF2-secured authentication with zero third-party auth dependencies.
-
----
-
 ## Tech Stack
 
 | Layer | Technology |
