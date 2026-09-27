@@ -9,27 +9,16 @@ using StockPulse.DAL;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---------------------------------------------------------------------------
-// Database
-// ---------------------------------------------------------------------------
-
 var dbPath = builder.Configuration["DatabasePath"] ?? "stockpulse.db";
 builder.Services.AddStockPulseBackend(dbPath);
 
-// ---------------------------------------------------------------------------
-// JWT Authentication
-// ---------------------------------------------------------------------------
-
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 
-// In Development: value comes from appsettings.Development.json (gitignored).
-// In Production:  value comes from the platform environment variable
-//                 JwtSettings__Secret (double-underscore = nested key in ASP.NET Core).
+// Fails fast at startup if the secret is missing rather than serving 500s at runtime.
 var secret = jwtSettings["Secret"]
     ?? throw new InvalidOperationException(
-        "JwtSettings:Secret is not configured. " +
-        "Add it to appsettings.Development.json locally, " +
-        "or set the JwtSettings__Secret environment variable in production.");
+        "JwtSettings:Secret is not configured. Set it in appsettings.Development.json " +
+        "locally or via the JwtSettings__Secret environment variable in production.");
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -51,10 +40,6 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<TokenService>();
 
-// ---------------------------------------------------------------------------
-// CORS
-// ---------------------------------------------------------------------------
-
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
@@ -73,20 +58,12 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// ---------------------------------------------------------------------------
-// Schema initialisation + seeding — both idempotent, safe on every startup
-// ---------------------------------------------------------------------------
-
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
     await db.InitializeAsync();
     await DatabaseSeeder.SeedAsync(db, app.Configuration);
 }
-
-// ---------------------------------------------------------------------------
-// Middleware pipeline
-// ---------------------------------------------------------------------------
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("FrontendPolicy");

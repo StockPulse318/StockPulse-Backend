@@ -5,11 +5,8 @@ using StockPulse.DAL;
 
 namespace StockPulse.API.Seeding;
 
-/// <summary>
-/// Seeds the database with an initial Warehouse Manager account on first run.
-/// Does nothing if any users already exist — safe to leave running permanently.
-/// Credentials are read from configuration so they are never hardcoded.
-/// </summary>
+// Runs once at startup. If users already exist, it exits immediately.
+// Credentials come from configuration — nothing is hardcoded.
 public static class DatabaseSeeder
 {
     private const int Pbkdf2Iterations = 310_000;
@@ -35,12 +32,11 @@ public static class DatabaseSeeder
     private static string HashPassword(string password)
     {
         var salt = RandomNumberGenerator.GetBytes(SaltSizeBytes);
-
         var hash = KeyDerivation.Pbkdf2(
-            password: password,
-            salt: salt,
-            prf: KeyDerivationPrf.HMACSHA256,
-            iterationCount: Pbkdf2Iterations,
+            password:          password,
+            salt:              salt,
+            prf:               KeyDerivationPrf.HMACSHA256,
+            iterationCount:    Pbkdf2Iterations,
             numBytesRequested: HashSizeBytes);
 
         return $"{Pbkdf2Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";

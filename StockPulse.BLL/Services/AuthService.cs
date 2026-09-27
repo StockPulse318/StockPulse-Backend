@@ -8,22 +8,13 @@ using StockPulse.Domain.Results;
 
 namespace StockPulse.BLL.Services;
 
-/// <summary>
-/// Handles credential verification, user provisioning, and RBAC guard for user management.
-///
-/// Password storage strategy:
-///   PBKDF2-HMAC-SHA256, 128-bit salt, 256-bit subkey, 310,000 iterations.
-///   Iteration count follows OWASP 2023 recommendations for PBKDF2-SHA256.
-///   Salt is generated fresh per password so two users with the same password
-///   produce different hashes, defeating rainbow table attacks.
-///   Stored format: "iterations.base64(salt).base64(hash)" — self-describing so
-///   the iteration count can be increased in future without breaking existing logins.
-/// </summary>
+// Stored hash format: "{iterations}.{base64(salt)}.{base64(hash)}"
+// Self-describing so the iteration count can be increased later without breaking existing accounts.
 public sealed class AuthService : IAuthService
 {
     private const int Pbkdf2Iterations = 310_000;
-    private const int SaltSizeBytes = 16;
-    private const int HashSizeBytes = 32;
+    private const int SaltSizeBytes    = 16;
+    private const int HashSizeBytes    = 32;
 
     private readonly IUserRepository _userRepository;
 
@@ -78,9 +69,9 @@ public sealed class AuthService : IAuthService
 
             var newUser = new User
             {
-                Username = newUsername.Trim(),
+                Username     = newUsername.Trim(),
                 PasswordHash = HashPassword(password),
-                Role = role
+                Role         = role
             };
 
             await _userRepository.AddAsync(newUser);
@@ -139,15 +130,10 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
     private async Task<User> ResolveActorAsync(string actorUsername)
     {
-        var actor = await _userRepository.GetByUsernameAsync(actorUsername)
-            ?? throw new InvalidOperationException($"Actor '{actorUsername}' not found in the system.");
-        return actor;
+        return await _userRepository.GetByUsernameAsync(actorUsername)
+            ?? throw new InvalidOperationException($"Actor '{actorUsername}' not found.");
     }
 
     private static void EnforceManagerRole(User actor, string attemptedAction)
@@ -156,46 +142,31 @@ public sealed class AuthService : IAuthService
             throw new UnauthorizedActionException(actor.Username, actor.Role, attemptedAction);
     }
 
-    /// <summary>
-    /// Produces a self-describing hash string containing the iteration count,
-    /// salt, and derived key so that stored hashes remain verifiable even if
-    /// the iteration count is tuned upwards in a future release.
-    /// </summary>
     private static string HashPassword(string password)
     {
         var salt = RandomNumberGenerator.GetBytes(SaltSizeBytes);
-
         var hash = KeyDerivation.Pbkdf2(
-            password: password,
-            salt: salt,
-            prf: KeyDerivationPrf.HMACSHA256,
-            iterationCount: Pbkdf2Iterations,
+            password:         password,
+            salt:             salt,
+            prf:              KeyDerivationPrf.HMACSHA256,
+            iterationCount:   Pbkdf2Iterations,
             numBytesRequested: HashSizeBytes);
 
         return $"{Pbkdf2Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
     }
 
-    /// <summary>
-    /// Parses the stored hash descriptor and re-derives the key using the same
-    /// parameters. CryptographicOperations.FixedTimeEquals is used to compare
-    /// the byte arrays in constant time — preventing timing-based side-channel attacks
-    /// where a naive string comparison might return early on first mismatch.
-    /// </summary>
+    // FixedTimeEquals prevents timing attacks — a naive string compare would return early
+    // on the first mismatched byte, leaking information about how close a guess was.
     private static bool VerifyPassword(string password, string storedHash)
     {
         var parts = storedHash.Split('.');
-        if (parts.Length != 3)
+        if (parts.Length != 3 || !int.TryParse(parts[0], out var iterations))
             return false;
 
-        if (!int.TryParse(parts[0], out var iterations))
-            return false;
-
-        byte[] salt;
-        byte[] expectedHash;
-
+        byte[] salt, expectedHash;
         try
         {
-            salt = Convert.FromBase64String(parts[1]);
+            salt         = Convert.FromBase64String(parts[1]);
             expectedHash = Convert.FromBase64String(parts[2]);
         }
         catch (FormatException)
@@ -204,10 +175,10 @@ public sealed class AuthService : IAuthService
         }
 
         var actualHash = KeyDerivation.Pbkdf2(
-            password: password,
-            salt: salt,
-            prf: KeyDerivationPrf.HMACSHA256,
-            iterationCount: iterations,
+            password:         password,
+            salt:             salt,
+            prf:              KeyDerivationPrf.HMACSHA256,
+            iterationCount:   iterations,
             numBytesRequested: expectedHash.Length);
 
         return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);

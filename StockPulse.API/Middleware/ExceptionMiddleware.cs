@@ -3,11 +3,8 @@ using System.Text.Json;
 
 namespace StockPulse.API.Middleware;
 
-/// <summary>
-/// Last-resort handler for any exception that escapes a controller.
-/// Ensures the client always receives JSON — never an ASP.NET HTML error page —
-/// and that stack traces are never exposed outside of Development.
-/// </summary>
+// Ensures every unhandled exception returns JSON — never an ASP.NET HTML error page.
+// Stack traces are only included in Development responses.
 public sealed class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;
@@ -19,8 +16,8 @@ public sealed class ExceptionMiddleware
         ILogger<ExceptionMiddleware> logger,
         IHostEnvironment environment)
     {
-        _next = next;
-        _logger = logger;
+        _next        = next;
+        _logger      = logger;
         _environment = environment;
     }
 
@@ -42,7 +39,7 @@ public sealed class ExceptionMiddleware
     private async Task WriteErrorResponseAsync(HttpContext context, Exception ex)
     {
         context.Response.ContentType = "application/json";
-        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+        context.Response.StatusCode  = (int)HttpStatusCode.InternalServerError;
 
         var payload = _environment.IsDevelopment()
             ? new { error = ex.Message, detail = ex.StackTrace }

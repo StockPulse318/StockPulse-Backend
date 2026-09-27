@@ -1,9 +1,5 @@
 namespace StockPulse.Domain.Entities;
 
-/// <summary>
-/// Represents an authenticated system user.
-/// Role is constrained at the DB level but also validated in the BLL before any mutation.
-/// </summary>
 public sealed class User
 {
     public string Username { get; init; } = string.Empty;
@@ -14,10 +10,7 @@ public sealed class User
     public bool IsStockClerk => Role == UserRoles.StockClerk;
 }
 
-/// <summary>
-/// Centralised role constants — kept here so BLL, DAL, and future UI layers
-/// all reference one canonical source instead of scattered string literals.
-/// </summary>
+// Single source of truth for role strings — referenced by BLL validation and DB CHECK constraints.
 public static class UserRoles
 {
     public const string WarehouseManager = "Warehouse Manager";

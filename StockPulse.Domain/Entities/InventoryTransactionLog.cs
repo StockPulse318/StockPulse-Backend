@@ -1,10 +1,7 @@
 namespace StockPulse.Domain.Entities;
 
-/// <summary>
-/// Immutable ledger record written once per stock movement.
-/// Never updated or deleted directly — cascade delete from Products handles
-/// orphan cleanup if a product is hard-deleted by a Warehouse Manager.
-/// </summary>
+// Written once per stock movement, never updated directly.
+// Cascade delete from Products handles cleanup when a product is removed.
 public sealed class InventoryTransactionLog
 {
     public int TransactionID { get; init; }
@@ -15,13 +12,10 @@ public sealed class InventoryTransactionLog
     public string Timestamp { get; init; } = string.Empty;
 }
 
-/// <summary>
-/// Canonical transaction type constants — mirrors the DB CHECK constraint
-/// so violations are caught in the BLL before they ever hit SQLite.
-/// </summary>
+// Mirrors the DB CHECK constraint so the BLL catches invalid values before they hit SQLite.
 public static class TransactionTypes
 {
-    public const string StockIn = "Stock-In";
+    public const string StockIn  = "Stock-In";
     public const string StockOut = "Stock-Out";
 
     public static readonly IReadOnlyList<string> All = [StockIn, StockOut];

@@ -24,7 +24,6 @@ public sealed class TransactionLogRepository : ITransactionLogRepository
     public async Task<IEnumerable<InventoryTransactionLog>> GetAllAsync()
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QueryAsync<InventoryTransactionLog>(
             $"{SelectAllColumns} ORDER BY Timestamp DESC;");
     }
@@ -32,7 +31,6 @@ public sealed class TransactionLogRepository : ITransactionLogRepository
     public async Task<IEnumerable<InventoryTransactionLog>> GetByProductIdAsync(int productId)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QueryAsync<InventoryTransactionLog>(
             $"{SelectAllColumns} WHERE ProductID = @ProductID ORDER BY Timestamp DESC;",
             new { ProductID = productId });
@@ -41,21 +39,18 @@ public sealed class TransactionLogRepository : ITransactionLogRepository
     public async Task<IEnumerable<InventoryTransactionLog>> GetByUserAsync(string username)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QueryAsync<InventoryTransactionLog>(
             $"{SelectAllColumns} WHERE HandledBy = @HandledBy ORDER BY Timestamp DESC;",
             new { HandledBy = username });
     }
 
+    // Accepts an external connection and transaction — this insert must be atomic
+    // with the quantity update in ProductRepository. Both are committed or rolled back together.
     public async Task AddAsync(
         InventoryTransactionLog log,
         SqliteConnection connection,
         SqliteTransaction transaction)
     {
-        // This overload accepts the external connection and transaction deliberately —
-        // the log insert must be part of the same atomic unit as the quantity update.
-        // If this insert fails, the transaction is rolled back by the service layer,
-        // preventing a stock change from occurring without a corresponding audit record.
         await connection.ExecuteAsync(
             """
             INSERT INTO InventoryTransactionLogs

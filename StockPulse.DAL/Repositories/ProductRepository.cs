@@ -20,7 +20,6 @@ public sealed class ProductRepository : IProductRepository
     public async Task<Product?> GetByIdAsync(int productId)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QuerySingleOrDefaultAsync<Product>(
             $"{SelectAllColumns} WHERE ProductID = @ProductID;",
             new { ProductID = productId });
@@ -29,7 +28,6 @@ public sealed class ProductRepository : IProductRepository
     public async Task<Product?> GetByNameAsync(string productName)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QuerySingleOrDefaultAsync<Product>(
             $"{SelectAllColumns} WHERE ProductName = @ProductName COLLATE NOCASE;",
             new { ProductName = productName });
@@ -38,7 +36,6 @@ public sealed class ProductRepository : IProductRepository
     public async Task<IEnumerable<Product>> GetAllAsync()
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QueryAsync<Product>(
             $"{SelectAllColumns} ORDER BY ProductName COLLATE NOCASE;");
     }
@@ -46,9 +43,6 @@ public sealed class ProductRepository : IProductRepository
     public async Task<IEnumerable<Product>> SearchByNameAsync(string partialName)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
-        // The '%' wildcards are applied here, not by the caller, so the BLL
-        // never has to know how partial matching is physically implemented.
         return await connection.QueryAsync<Product>(
             $"{SelectAllColumns} WHERE ProductName LIKE @Pattern ESCAPE '\\' COLLATE NOCASE ORDER BY ProductName;",
             new { Pattern = $"%{EscapeLikePattern(partialName)}%" });
@@ -57,7 +51,6 @@ public sealed class ProductRepository : IProductRepository
     public async Task<IEnumerable<Product>> GetLowStockAsync()
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QueryAsync<Product>(
             $"{SelectAllColumns} WHERE Quantity <= ReorderLevel ORDER BY ProductName COLLATE NOCASE;");
     }
@@ -66,8 +59,8 @@ public sealed class ProductRepository : IProductRepository
     {
         await using var connection = await _db.CreateConnectionAsync();
 
-        // Dapper's ExecuteScalarAsync captures the AUTOINCREMENT value in one round trip.
-        var newId = await connection.ExecuteScalarAsync<int>(
+        // INSERT then SELECT last_insert_rowid() in one round trip to get the generated ID.
+        return await connection.ExecuteScalarAsync<int>(
             """
             INSERT INTO Products (ProductName, Category, Quantity, UnitPrice, ReorderLevel)
             VALUES (@ProductName, @Category, @Quantity, @UnitPrice, @ReorderLevel);
@@ -81,14 +74,14 @@ public sealed class ProductRepository : IProductRepository
                 product.UnitPrice,
                 product.ReorderLevel
             });
-
-        return newId;
     }
 
     public async Task UpdateAsync(Product product)
     {
         await using var connection = await _db.CreateConnectionAsync();
 
+        // Quantity is intentionally excluded — stock levels are only mutated
+        // through AdjustQuantityAsync to keep the ledger consistent.
         await connection.ExecuteAsync(
             """
             UPDATE Products
@@ -106,15 +99,11 @@ public sealed class ProductRepository : IProductRepository
                 product.ReorderLevel,
                 product.ProductID
             });
-
-        // Quantity is intentionally excluded — stock levels are only mutated
-        // through the atomic AdjustQuantityAsync path to preserve ledger integrity.
     }
 
     public async Task DeleteAsync(int productId)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         await connection.ExecuteAsync(
             "DELETE FROM Products WHERE ProductID = @ProductID;",
             new { ProductID = productId });
@@ -126,20 +115,13 @@ public sealed class ProductRepository : IProductRepository
         SqliteConnection connection,
         SqliteTransaction transaction)
     {
-        // The CHECK(Quantity >= 0) constraint on the DB column acts as a final
-        // safety net, but the BLL pre-validates stock availability before calling
-        // here so the constraint should never be the first line of defense.
         await connection.ExecuteAsync(
             "UPDATE Products SET Quantity = Quantity + @Delta WHERE ProductID = @ProductID;",
             new { Delta = delta, ProductID = productId },
             transaction);
     }
 
-    /// <summary>
-    /// Escapes LIKE special characters in user-supplied search input so that
-    /// literal '%' or '_' characters in product names don't accidentally act
-    /// as wildcards and return unintended results.
-    /// </summary>
+    // Escapes LIKE special characters so user input can never act as wildcards.
     private static string EscapeLikePattern(string input) =>
         input.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 }

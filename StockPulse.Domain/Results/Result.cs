@@ -1,19 +1,10 @@
 namespace StockPulse.Domain.Results;
 
-/// <summary>
-/// Discriminated union for operation outcomes. Forces every service caller to
-/// explicitly handle both success and failure paths — no silent swallowing of
-/// exceptions via empty catch blocks, and no null-return guessing games.
-///
-/// Usage pattern:
-///   var result = await productService.AddProductAsync(...);
-///   if (result.IsSuccess) { use result.Value } else { show result.ErrorMessage }
-/// </summary>
+// Forces callers to explicitly handle success and failure — no null returns, no bare exceptions.
 public sealed class Result<T>
 {
     public bool IsSuccess { get; }
     public bool IsFailure => !IsSuccess;
-
     public T? Value { get; }
     public string? ErrorMessage { get; }
     public Exception? Exception { get; }
@@ -36,20 +27,14 @@ public sealed class Result<T>
     public static Result<T> Failure(string errorMessage, Exception? exception = null)
         => new(errorMessage, exception);
 
-    /// <summary>
-    /// Allows transforming a Result{T} into a Result{TOut} without unwrapping.
-    /// Useful for chaining service calls without nested if-blocks.
-    /// </summary>
+    // Transforms the inner value without unwrapping — useful for mapping service results to DTOs.
     public Result<TOut> Map<TOut>(Func<T, TOut> mapper) =>
         IsSuccess && Value is not null
             ? Result<TOut>.Success(mapper(Value))
             : Result<TOut>.Failure(ErrorMessage!, Exception);
 }
 
-/// <summary>
-/// Non-generic Result for operations that have no meaningful return value
-/// (e.g., Delete, Update). Avoids the awkward Result{bool} anti-pattern.
-/// </summary>
+// Non-generic variant for operations with no return value (Delete, Update, etc.).
 public sealed class Result
 {
     public bool IsSuccess { get; }

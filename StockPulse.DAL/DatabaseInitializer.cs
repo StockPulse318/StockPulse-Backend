@@ -3,63 +3,35 @@ using Microsoft.Data.Sqlite;
 
 namespace StockPulse.DAL;
 
-/// <summary>
-/// Owns the database lifecycle: connection string construction, schema migrations,
-/// and the enforcement of SQLite pragmas that must be set per-connection.
-///
-/// Designed as a singleton dependency — one initializer instance for the application
-/// lifetime, with individual repositories opening short-lived connections via
-/// CreateConnectionAsync() for each operation.
-/// </summary>
 public sealed class DatabaseInitializer
 {
     private readonly string _connectionString;
 
     public DatabaseInitializer(string databaseFilePath)
     {
-        // WAL (Write-Ahead Log) mode dramatically improves concurrent read throughput
-        // because readers don't block writers and vice versa — important for an API
-        // handling multiple simultaneous requests against the same embedded database.
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databaseFilePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Cache      = SqliteCacheMode.Shared
         }.ToString();
     }
 
-    /// <summary>
-    /// Returns the connection string for use by repositories.
-    /// Kept internal to the DAL — nothing outside this assembly should build raw connections.
-    /// </summary>
     public string ConnectionString => _connectionString;
 
-    /// <summary>
-    /// Opens a connection and applies the per-connection pragmas that SQLite requires
-    /// to be set on every new connection. Repositories call this instead of managing
-    /// SqliteConnection directly so pragma enforcement is never accidentally skipped.
-    /// </summary>
+    // Repositories call this instead of constructing connections directly
+    // so foreign key enforcement and WAL mode are never accidentally skipped.
+    // Both pragmas must be set per-connection — SQLite does not persist them.
     public async Task<SqliteConnection> CreateConnectionAsync()
     {
         var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
-
-        // Foreign key enforcement is off by default in SQLite and must be re-enabled
-        // for every connection — it does not persist in the database file itself.
         await connection.ExecuteAsync("PRAGMA foreign_keys = ON;");
-
-        // WAL mode persists in the DB file after first set, but re-asserting it here
-        // ensures correct behavior even if the file was created by a different process.
         await connection.ExecuteAsync("PRAGMA journal_mode = WAL;");
-
         return connection;
     }
 
-    /// <summary>
-    /// Runs on application startup. Idempotent — safe to call on every launch.
-    /// Uses CREATE TABLE IF NOT EXISTS so it acts as both initial setup and
-    /// a lightweight schema guard without a full migration framework.
-    /// </summary>
+    // Idempotent — CREATE TABLE IF NOT EXISTS means this is safe to call on every startup.
     public async Task InitializeAsync()
     {
         await using var connection = await CreateConnectionAsync();
@@ -83,8 +55,7 @@ public sealed class DatabaseInitializer
             );
             """);
 
-        // ON DELETE CASCADE means removing a Product automatically purges its
-        // transaction history — keeps referential integrity without manual cleanup.
+        // ON DELETE CASCADE keeps the logs table clean when a product is removed.
         await connection.ExecuteAsync("""
             CREATE TABLE IF NOT EXISTS InventoryTransactionLogs (
                 TransactionID   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,8 +69,6 @@ public sealed class DatabaseInitializer
             );
             """);
 
-        // Index on the most common log query paths — prevents full table scans
-        // on the logs table as transaction history grows over time.
         await connection.ExecuteAsync("""
             CREATE INDEX IF NOT EXISTS idx_logs_product   ON InventoryTransactionLogs(ProductID);
             CREATE INDEX IF NOT EXISTS idx_logs_handledby ON InventoryTransactionLogs(HandledBy);
