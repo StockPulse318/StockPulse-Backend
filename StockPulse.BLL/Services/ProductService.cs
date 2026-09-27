@@ -170,10 +170,6 @@ public sealed class ProductService : IProductService
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
     private async Task<User> ResolveActorAsync(string actorUsername)
     {
         return await _userRepository.GetByUsernameAsync(actorUsername)
@@ -186,10 +182,6 @@ public sealed class ProductService : IProductService
             throw new UnauthorizedActionException(actor.Username, actor.Role, attemptedAction);
     }
 
-    /// <summary>
-    /// Returns a human-readable error string on first validation failure, or null if all fields are valid.
-    /// Centralised here so both Add and Update paths run the same checks without duplication.
-    /// </summary>
     private static string? ValidateProductFields(Product product)
     {
         if (string.IsNullOrWhiteSpace(product.ProductName))
