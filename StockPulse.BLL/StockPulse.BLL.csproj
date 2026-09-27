@@ -13,6 +13,7 @@
          Microsoft.AspNetCore.Cryptography.KeyDerivation is the clean .NET 8 surface
          for PBKDF2 without pulling in the full ASP.NET runtime. -->
     <PackageReference Include="Microsoft.AspNetCore.Cryptography.KeyDerivation" Version="8.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
   </ItemGroup>
 
