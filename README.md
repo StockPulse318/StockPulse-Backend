@@ -123,7 +123,7 @@ SQLite with foreign key enforcement and WAL journaling enabled on every connecti
 Swagger UI is available at `/docs` when the API is running.
 
 - Locally: `http://localhost:5000/docs`
-- Production: `https://your-render-url.onrender.com/docs`
+- Production: [SWAGGER Docs](https://stockpulse-backend-production-4c30.up.railway.app/docs)
 
 Click **Authorize**, paste your Bearer token from the login response, and you can call
 every endpoint directly from the browser.
