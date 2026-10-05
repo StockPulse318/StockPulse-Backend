@@ -177,23 +177,12 @@ if (args.Length > 0)
     }
 }
 
-// Ensure database schema migrations are applied at startup
+// Ensure database schema migrations and idempotent seed data are applied at startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
     await db.MigrateAsync();
-
-    var env = Environment.GetEnvironmentVariable("ENVIRONMENT") ?? app.Environment.EnvironmentName;
-    var isProduction = string.Equals(env, "production", StringComparison.OrdinalIgnoreCase);
-
-    // In development, or if the database has 0 users (first-time hosted deployment), seed initial accounts
-    await using var conn = await db.CreateConnectionAsync();
-    var userCount = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users;");
-
-    if (!isProduction || userCount == 0)
-    {
-        await DatabaseSeeder.SeedAsync(db, app.Configuration);
-    }
+    await DatabaseSeeder.SeedAsync(db, app.Configuration);
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
