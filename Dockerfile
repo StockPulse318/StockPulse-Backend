@@ -20,13 +20,14 @@ RUN dotnet publish StockPulse.API/StockPulse.API.csproj -c Release -o /app/publi
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# Create mount point for Render persistent disk
+# Create mount point for persistent disk
 RUN mkdir -p /data
 
 COPY --from=build /app/publish .
 
-# Render routes traffic to port 10000
-ENV ASPNETCORE_URLS=http://0.0.0.0:10000
-EXPOSE 10000
+# In .NET 8, the default HTTP port is 8080.
+# If Railway or Render sets the PORT env var, Program.cs dynamically binds to it.
+ENV ASPNETCORE_HTTP_PORTS=8080
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "StockPulse.API.dll"]
