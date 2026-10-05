@@ -38,11 +38,20 @@ public sealed class DatabaseInitializer
 
         await connection.ExecuteAsync("""
             CREATE TABLE IF NOT EXISTS Users (
-                Username     TEXT NOT NULL PRIMARY KEY,
-                PasswordHash TEXT NOT NULL,
-                Role         TEXT NOT NULL CHECK(Role IN ('Warehouse Manager', 'Stock Clerk'))
+                Username       TEXT NOT NULL PRIMARY KEY,
+                PasswordHash   TEXT NOT NULL,
+                Role           TEXT NOT NULL,
+                FullName       TEXT NOT NULL DEFAULT '',
+                AssignedBranch TEXT NOT NULL DEFAULT 'All Branches',
+                IsActive       INTEGER NOT NULL DEFAULT 1,
+                CreatedAt      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
             """);
+
+        try { await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN FullName TEXT NOT NULL DEFAULT '';"); } catch { }
+        try { await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN AssignedBranch TEXT NOT NULL DEFAULT 'All Branches';"); } catch { }
+        try { await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN IsActive INTEGER NOT NULL DEFAULT 1;"); } catch { }
+        try { await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN CreatedAt TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));"); } catch { }
 
         await connection.ExecuteAsync("""
             CREATE TABLE IF NOT EXISTS Products (

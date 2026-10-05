@@ -31,7 +31,12 @@ public sealed class AuthController : ControllerBase
 
         var token = _tokenService.GenerateToken(result.Value!);
 
-        return Ok(new LoginResponse(token, result.Value!.Username, result.Value.Role));
+        return Ok(new LoginResponse(
+            token,
+            result.Value!.Username,
+            result.Value.Role,
+            result.Value.FullName,
+            result.Value.AssignedBranch));
     }
 
     /// <summary>POST api/auth/users — Warehouse Manager only</summary>
@@ -41,12 +46,51 @@ public sealed class AuthController : ControllerBase
     {
         var actorUsername = GetActorUsername();
         var result = await _authService.RegisterUserAsync(
-            actorUsername, request.Username, request.Password, request.Role);
+            actorUsername,
+            request.Username,
+            request.Password,
+            request.Role,
+            request.FullName,
+            request.AssignedBranch);
 
         if (result.IsFailure)
             return BadRequest(new { error = result.ErrorMessage });
 
         return StatusCode(201);
+    }
+
+    /// <summary>PUT api/auth/users/{username} — Warehouse Manager only</summary>
+    [HttpPut("users/{username}")]
+    [Authorize]
+    public async Task<IActionResult> UpdateUser(string username, [FromBody] UpdateUserRequest request)
+    {
+        var actorUsername = GetActorUsername();
+        var result = await _authService.UpdateUserAsync(
+            actorUsername,
+            username,
+            request.FullName,
+            request.Role,
+            request.AssignedBranch,
+            request.IsActive);
+
+        if (result.IsFailure)
+            return BadRequest(new { error = result.ErrorMessage });
+
+        return NoContent();
+    }
+
+    /// <summary>POST api/auth/users/{username}/reset-password — Warehouse Manager only</summary>
+    [HttpPost("users/{username}/reset-password")]
+    [Authorize]
+    public async Task<IActionResult> ResetPassword(string username, [FromBody] ResetPasswordRequest request)
+    {
+        var actorUsername = GetActorUsername();
+        var result = await _authService.ResetPasswordAsync(actorUsername, username, request.NewPassword);
+
+        if (result.IsFailure)
+            return BadRequest(new { error = result.ErrorMessage });
+
+        return NoContent();
     }
 
     /// <summary>GET api/auth/users — Warehouse Manager only</summary>
@@ -60,7 +104,14 @@ public sealed class AuthController : ControllerBase
         if (result.IsFailure)
             return Forbid();
 
-        var response = result.Value!.Select(u => new UserResponse(u.Username, u.Role));
+        var response = result.Value!.Select(u => new UserResponse(
+            u.Username,
+            u.Role,
+            u.FullName,
+            u.AssignedBranch,
+            u.IsActive,
+            u.CreatedAt));
+
         return Ok(response);
     }
 

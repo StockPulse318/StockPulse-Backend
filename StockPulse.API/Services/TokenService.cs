@@ -31,6 +31,8 @@ public sealed class TokenService
         {
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Role, user.Role),
+            new Claim("branch", user.AssignedBranch),
+            new Claim("fullName", user.FullName),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 

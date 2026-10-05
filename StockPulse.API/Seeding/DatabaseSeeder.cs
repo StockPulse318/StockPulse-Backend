@@ -28,35 +28,57 @@ public static class DatabaseSeeder
             var seedUsers = new[]
             {
                 // Central / Head Office
-                new { Username = configuration["SeedManager:Username"] ?? "admin", Password = configuration["SeedManager:Password"] ?? "Admin@1234", Role = "Warehouse Manager" },
-                new { Username = "manager", Password = "Manager@1234", Role = "Warehouse Manager" },
-                new { Username = "clerk", Password = "Clerk@1234", Role = "Stock Clerk" },
+                new { Username = configuration["SeedManager:Username"] ?? "admin", Password = configuration["SeedManager:Password"] ?? "Admin@1234", Role = "Administrator", FullName = "System Administrator", AssignedBranch = "All Branches" },
+                new { Username = "manager", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "National Operations Lead", AssignedBranch = "All Branches" },
+                new { Username = "clerk", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "General Floating Clerk", AssignedBranch = "All Branches" },
 
                 // Accra Central Warehouse
-                new { Username = "manager_accra", Password = "Manager@1234", Role = "Warehouse Manager" },
-                new { Username = "clerk_accra", Password = "Clerk@1234", Role = "Stock Clerk" },
-                new { Username = "kofi_mensah", Password = "Clerk@1234", Role = "Stock Clerk" },
+                new { Username = "manager_accra", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Kwame Mensah", AssignedBranch = "Accra Central" },
+                new { Username = "clerk_accra", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Emmanuel Addo", AssignedBranch = "Accra Central" },
+                new { Username = "kofi_mensah", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Kofi Mensah Jr.", AssignedBranch = "Accra Central" },
 
                 // Tema Harbor Depot
-                new { Username = "manager_tema", Password = "Manager@1234", Role = "Warehouse Manager" },
-                new { Username = "clerk_tema", Password = "Clerk@1234", Role = "Stock Clerk" },
-                new { Username = "ama_boateng", Password = "Clerk@1234", Role = "Stock Clerk" },
+                new { Username = "manager_tema", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Abena Osei", AssignedBranch = "Tema Harbor" },
+                new { Username = "clerk_tema", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Samuel Annan", AssignedBranch = "Tema Harbor" },
+                new { Username = "ama_boateng", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Ama Boateng", AssignedBranch = "Tema Harbor" },
 
                 // Kumasi Regional Branch
-                new { Username = "manager_kumasi", Password = "Manager@1234", Role = "Warehouse Manager" },
-                new { Username = "clerk_kumasi", Password = "Clerk@1234", Role = "Stock Clerk" },
+                new { Username = "manager_kumasi", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Yaw Frimpong", AssignedBranch = "Kumasi Depot" },
+                new { Username = "clerk_kumasi", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Akosua Serwaa", AssignedBranch = "Kumasi Depot" },
 
                 // Takoradi Logistics Branch
-                new { Username = "manager_takoradi", Password = "Manager@1234", Role = "Warehouse Manager" },
-                new { Username = "clerk_takoradi", Password = "Clerk@1234", Role = "Stock Clerk" }
+                new { Username = "manager_takoradi", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Ebenezer Quaye", AssignedBranch = "Takoradi Logistics" },
+                new { Username = "clerk_takoradi", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Grace Tandoh", AssignedBranch = "Takoradi Logistics" }
             };
 
             foreach (var u in seedUsers)
             {
                 await connection.ExecuteAsync(
-                    "INSERT INTO Users (Username, PasswordHash, Role) VALUES (@Username, @PasswordHash, @Role);",
-                    new { u.Username, PasswordHash = HashPassword(u.Password), u.Role });
+                    """
+                    INSERT INTO Users (Username, PasswordHash, Role, FullName, AssignedBranch, IsActive)
+                    VALUES (@Username, @PasswordHash, @Role, @FullName, @AssignedBranch, 1);
+                    """,
+                    new { u.Username, PasswordHash = HashPassword(u.Password), u.Role, u.FullName, u.AssignedBranch });
             }
+        }
+        else
+        {
+            // Backfill details for existing accounts if they were created before schema upgrade
+            try
+            {
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'System Administrator', AssignedBranch = 'All Branches', Role = 'Administrator' WHERE Username = 'admin' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Kwame Mensah', AssignedBranch = 'Accra Central' WHERE Username = 'manager_accra' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Abena Osei', AssignedBranch = 'Tema Harbor' WHERE Username = 'manager_tema' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Yaw Frimpong', AssignedBranch = 'Kumasi Depot' WHERE Username = 'manager_kumasi' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Ebenezer Quaye', AssignedBranch = 'Takoradi Logistics' WHERE Username = 'manager_takoradi' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Emmanuel Addo', AssignedBranch = 'Accra Central' WHERE Username = 'clerk_accra' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Samuel Annan', AssignedBranch = 'Tema Harbor' WHERE Username = 'clerk_tema' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Akosua Serwaa', AssignedBranch = 'Kumasi Depot' WHERE Username = 'clerk_kumasi' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Grace Tandoh', AssignedBranch = 'Takoradi Logistics' WHERE Username = 'clerk_takoradi' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Kofi Mensah Jr.', AssignedBranch = 'Accra Central' WHERE Username = 'kofi_mensah' AND (FullName = '' OR FullName IS NULL);");
+                await connection.ExecuteAsync("UPDATE Users SET FullName = 'Ama Boateng', AssignedBranch = 'Tema Harbor' WHERE Username = 'ama_boateng' AND (FullName = '' OR FullName IS NULL);");
+            }
+            catch { }
         }
 
         // 2. Seed Products across Warehouse Branches

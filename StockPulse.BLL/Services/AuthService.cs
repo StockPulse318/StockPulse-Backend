@@ -35,6 +35,9 @@ public sealed class AuthService : IAuthService
             if (user is null || !VerifyPassword(password, user.PasswordHash))
                 return Result<User>.Failure("Invalid username or password.");
 
+            if (!user.IsActive)
+                return Result<User>.Failure("This account has been deactivated or suspended. Please contact your system administrator.");
+
             return Result<User>.Success(user);
         }
         catch (Exception ex)
@@ -47,7 +50,9 @@ public sealed class AuthService : IAuthService
         string actorUsername,
         string newUsername,
         string password,
-        string role)
+        string role,
+        string? fullName = null,
+        string? assignedBranch = null)
     {
         try
         {
@@ -69,9 +74,13 @@ public sealed class AuthService : IAuthService
 
             var newUser = new User
             {
-                Username     = newUsername.Trim(),
-                PasswordHash = HashPassword(password),
-                Role         = role
+                Username       = newUsername.Trim(),
+                PasswordHash   = HashPassword(password),
+                Role           = role,
+                FullName       = fullName?.Trim() ?? string.Empty,
+                AssignedBranch = string.IsNullOrWhiteSpace(assignedBranch) ? "All Branches" : assignedBranch.Trim(),
+                IsActive       = true,
+                CreatedAt      = DateTime.UtcNow.ToString("o")
             };
 
             await _userRepository.AddAsync(newUser);
@@ -84,6 +93,85 @@ public sealed class AuthService : IAuthService
         catch (Exception ex)
         {
             return Result.Failure("Failed to register user due to an unexpected error.", ex);
+        }
+    }
+
+    public async Task<Result> UpdateUserAsync(
+        string actorUsername,
+        string targetUsername,
+        string? fullName,
+        string? role,
+        string? assignedBranch,
+        bool? isActive)
+    {
+        try
+        {
+            var actor = await ResolveActorAsync(actorUsername);
+            EnforceManagerRole(actor, "update user accounts");
+
+            var target = await _userRepository.GetByUsernameAsync(targetUsername);
+            if (target is null)
+                return Result.Failure($"User '{targetUsername}' does not exist.");
+
+            // Self-modification safeguard: Cannot deactivate yourself
+            if (actor.Username.Equals(targetUsername, StringComparison.OrdinalIgnoreCase) && isActive == false)
+                return Result.Failure("You cannot deactivate your own account.");
+
+            if (role != null && !UserRoles.IsValid(role))
+                return Result.Failure($"Invalid role. Accepted values: {string.Join(", ", UserRoles.All)}");
+
+            var updatedUser = new User
+            {
+                Username       = target.Username,
+                PasswordHash   = target.PasswordHash,
+                Role           = role ?? target.Role,
+                FullName       = fullName ?? target.FullName,
+                AssignedBranch = assignedBranch ?? target.AssignedBranch,
+                IsActive       = isActive ?? target.IsActive,
+                CreatedAt      = target.CreatedAt
+            };
+
+            await _userRepository.UpdateAsync(updatedUser);
+            return Result.Success();
+        }
+        catch (UnauthorizedActionException ex)
+        {
+            return Result.Failure(ex.Message, ex);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure("Failed to update user.", ex);
+        }
+    }
+
+    public async Task<Result> ResetPasswordAsync(
+        string actorUsername,
+        string targetUsername,
+        string newPassword)
+    {
+        try
+        {
+            var actor = await ResolveActorAsync(actorUsername);
+            EnforceManagerRole(actor, "reset user passwords");
+
+            if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+                return Result.Failure("New password must be at least 8 characters long.");
+
+            var target = await _userRepository.GetByUsernameAsync(targetUsername);
+            if (target is null)
+                return Result.Failure($"User '{targetUsername}' does not exist.");
+
+            var newHash = HashPassword(newPassword);
+            await _userRepository.UpdatePasswordAsync(targetUsername, newHash);
+            return Result.Success();
+        }
+        catch (UnauthorizedActionException ex)
+        {
+            return Result.Failure(ex.Message, ex);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure("Failed to reset password.", ex);
         }
     }
 
