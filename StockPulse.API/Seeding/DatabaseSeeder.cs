@@ -1,162 +1,214 @@
-using System.Security.Cryptography;
 using Dapper;
-using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using StockPulse.DAL;
+using StockPulse.Domain.Entities;
 
 namespace StockPulse.API.Seeding;
 
-/// <summary>
-/// Seeds the database on first run with:
-/// - Accounts across warehouse branches (Warehouse Managers and Stock Clerks)
-/// - Inventory products categorized across multiple warehouse branches (Accra, Tema, Kumasi, Takoradi)
-/// - Initial transaction audit ledger logs
-/// </summary>
 public static class DatabaseSeeder
 {
-    private const int Pbkdf2Iterations = 310_000;
-    private const int SaltSizeBytes    = 16;
-    private const int HashSizeBytes    = 32;
-
     public static async Task SeedAsync(DatabaseInitializer db, IConfiguration configuration)
     {
+        await db.MigrateAsync();
         await using var connection = await db.CreateConnectionAsync();
 
-        // 1. Seed Users (Ensure all branch administrators, managers, and clerks exist)
-        var seedUsers = new[]
+        // 1. Resolve seed user credentials
+        var managerUsername = Environment.GetEnvironmentVariable("SEED_MANAGER_USERNAME")
+            ?? configuration["SeedManager:Username"]
+            ?? "manager";
+
+        var clerkUsername = Environment.GetEnvironmentVariable("SEED_CLERK_USERNAME")
+            ?? configuration["SeedClerk:Username"]
+            ?? "clerk";
+
+        var defaultPassword = Environment.GetEnvironmentVariable("SEED_DEFAULT_PASSWORD")
+            ?? configuration["SeedDefaultPassword"]
+            ?? "StockPulse@2026";
+
+        Console.WriteLine($"[SEED] Seeding Warehouse Manager: {managerUsername}");
+        Console.WriteLine($"[SEED] Seeding Stock Clerk: {clerkUsername}");
+
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(defaultPassword);
+
+        // Upsert Manager
+        await connection.ExecuteAsync("""
+            INSERT INTO users (username, full_name, password_hash, role, is_active, created_at)
+            VALUES (@Username, @FullName, @PasswordHash, @Role, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ON CONFLICT(username) DO UPDATE SET
+                full_name = excluded.full_name,
+                password_hash = excluded.password_hash,
+                role = excluded.role;
+            """,
+            new
+            {
+                Username = managerUsername.Trim(),
+                FullName = "Warehouse Operations Manager",
+                PasswordHash = passwordHash,
+                Role = UserRoles.WarehouseManager
+            });
+
+        // Upsert Clerk
+        await connection.ExecuteAsync("""
+            INSERT INTO users (username, full_name, password_hash, role, is_active, created_at)
+            VALUES (@Username, @FullName, @PasswordHash, @Role, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ON CONFLICT(username) DO UPDATE SET
+                full_name = excluded.full_name,
+                password_hash = excluded.password_hash,
+                role = excluded.role;
+            """,
+            new
+            {
+                Username = clerkUsername.Trim(),
+                FullName = "Lead Inventory Clerk",
+                PasswordHash = passwordHash,
+                Role = UserRoles.Clerk
+            });
+
+        var managerId = await connection.ExecuteScalarAsync<int>(
+            "SELECT id FROM users WHERE username = @Username;", new { Username = managerUsername.Trim() });
+        var clerkId = await connection.ExecuteScalarAsync<int>(
+            "SELECT id FROM users WHERE username = @Username;", new { Username = clerkUsername.Trim() });
+
+        // 2. Seed Categories (7 distinct, clean categories)
+        var categories = new[]
         {
-            // Central / Head Office
-            new { Username = configuration["SeedManager:Username"] ?? "admin", Password = configuration["SeedManager:Password"] ?? "Admin@1234", Role = "Administrator", FullName = "System Administrator", AssignedBranch = "All Branches" },
-            new { Username = "manager", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "National Operations Lead", AssignedBranch = "All Branches" },
-            new { Username = "clerk", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "General Floating Clerk", AssignedBranch = "All Branches" },
-
-            // Accra Central Warehouse
-            new { Username = "manager_accra", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Kwame Mensah", AssignedBranch = "Accra Central" },
-            new { Username = "clerk_accra", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Emmanuel Addo", AssignedBranch = "Accra Central" },
-            new { Username = "kofi_mensah", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Kofi Mensah Jr.", AssignedBranch = "Accra Central" },
-
-            // Tema Harbor Depot
-            new { Username = "manager_tema", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Abena Osei", AssignedBranch = "Tema Harbor" },
-            new { Username = "clerk_tema", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Samuel Annan", AssignedBranch = "Tema Harbor" },
-            new { Username = "ama_boateng", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Ama Boateng", AssignedBranch = "Tema Harbor" },
-
-            // Kumasi Regional Branch
-            new { Username = "manager_kumasi", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Yaw Frimpong", AssignedBranch = "Kumasi Depot" },
-            new { Username = "clerk_kumasi", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Akosua Serwaa", AssignedBranch = "Kumasi Depot" },
-
-            // Takoradi Logistics Branch
-            new { Username = "manager_takoradi", Password = "Manager@1234", Role = "Warehouse Manager", FullName = "Ebenezer Quaye", AssignedBranch = "Takoradi Logistics" },
-            new { Username = "clerk_takoradi", Password = "Clerk@1234", Role = "Stock Clerk", FullName = "Grace Tandoh", AssignedBranch = "Takoradi Logistics" }
+            "Building & Construction",
+            "Electrical & Power",
+            "Hardware & Tools",
+            "Plumbing & Drainage",
+            "Paints & Protective Coatings",
+            "Safety & Security Gear",
+            "Warehouse & Material Handling"
         };
 
-        foreach (var u in seedUsers)
+        foreach (var categoryName in categories)
         {
-            var exists = await connection.ExecuteScalarAsync<int>(
-                "SELECT COUNT(*) FROM Users WHERE LOWER(Username) = LOWER(@Username);", new { u.Username });
-
-            if (exists == 0)
-            {
-                await connection.ExecuteAsync(
-                    """
-                    INSERT INTO Users (Username, PasswordHash, Role, FullName, AssignedBranch, IsActive)
-                    VALUES (@Username, @PasswordHash, @Role, @FullName, @AssignedBranch, 1);
-                    """,
-                    new { u.Username, PasswordHash = HashPassword(u.Password), u.Role, u.FullName, u.AssignedBranch });
-            }
-            else
-            {
-                await connection.ExecuteAsync(
-                    """
-                    UPDATE Users 
-                    SET FullName = COALESCE(NULLIF(FullName, ''), @FullName),
-                        AssignedBranch = COALESCE(NULLIF(AssignedBranch, ''), @AssignedBranch),
-                        Role = CASE WHEN LOWER(Username) = 'admin' THEN 'Administrator' ELSE Role END
-                    WHERE LOWER(Username) = LOWER(@Username);
-                    """,
-                    new { u.Username, u.FullName, u.AssignedBranch });
-            }
+            await connection.ExecuteAsync("""
+                INSERT INTO categories (name) VALUES (@Name)
+                ON CONFLICT(name) DO NOTHING;
+                """,
+                new { Name = categoryName });
         }
 
-        // 2. Seed Products across Warehouse Branches
-        var seedProducts = new[]
+        var categoryMap = (await connection.QueryAsync<(int Id, string Name)>(
+            "SELECT id, name FROM categories;"))
+            .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
+
+        // 3. Seed 50 realistic products with Ghana cedis pricing
+        // ~8 out of 50 products (16%) are low-stock (Quantity <= ReorderLevel)
+        var products = new[]
         {
-            // Accra Central Warehouse
-            new { Name = "Portland Cement 50kg Grade 42.5N", Category = "Accra Central - Building Supplies", Qty = 180, Price = 78.50m, Reorder = 50 },
-            new { Name = "High-Tensile Iron Rods 12mm x 12m", Category = "Accra Central - Building Supplies", Qty = 45, Price = 125.00m, Reorder = 40 },
-            new { Name = "Solid Sandcrete Blocks 5-inch", Category = "Accra Central - Building Supplies", Qty = 500, Price = 8.50m, Reorder = 150 },
-            new { Name = "Copper Cable 2.5mm Roll (100m)", Category = "Accra Central - Electrical & Power", Qty = 8, Price = 280.00m, Reorder = 15 }, // Low stock
-            new { Name = "Schneider Circuit Breaker 63A Double Pole", Category = "Accra Central - Electrical & Power", Qty = 35, Price = 45.00m, Reorder = 20 },
-            new { Name = "Heavy Duty PVC Conduit Pipe 20mm x 3m", Category = "Accra Central - Electrical & Power", Qty = 120, Price = 16.00m, Reorder = 60 },
-            new { Name = "Industrial Extension Reel 50m Heavy Duty", Category = "Accra Central - Electrical & Power", Qty = 14, Price = 340.00m, Reorder = 10 },
+            // Building & Construction
+            new { Code = "PRD-1001", Name = "Portland Cement 50kg Grade 42.5N", Cat = "Building & Construction", Qty = 180, Price = 88.50m, Reorder = 50 },
+            new { Code = "PRD-1002", Name = "High-Tensile Iron Rods 12mm x 12m", Cat = "Building & Construction", Qty = 45, Price = 135.00m, Reorder = 40 },
+            new { Code = "PRD-1003", Name = "Solid Sandcrete Blocks 5-inch", Cat = "Building & Construction", Qty = 500, Price = 9.50m, Reorder = 150 },
+            new { Code = "PRD-1004", Name = "Galvanized Binding Wire 25kg Roll", Cat = "Building & Construction", Qty = 30, Price = 210.00m, Reorder = 15 },
+            new { Code = "PRD-1005", Name = "Aluzinc Corrugated Roofing Sheet 3m x 0.4mm", Cat = "Building & Construction", Qty = 40, Price = 175.00m, Reorder = 50 }, // Low stock (40 <= 50)
+            new { Code = "PRD-1006", Name = "Seasoned Hardwood Timber 2x4 12ft", Cat = "Building & Construction", Qty = 110, Price = 48.00m, Reorder = 40 },
+            new { Code = "PRD-1007", Name = "Marine Plywood Sheet 18mm 4x8ft", Cat = "Building & Construction", Qty = 60, Price = 380.00m, Reorder = 20 },
 
-            // Tema Harbor Depot
-            new { Name = "Viro Solid Brass Padlock 70mm", Category = "Tema Harbor - Hardware & Security", Qty = 60, Price = 65.00m, Reorder = 25 },
-            new { Name = "Galvanized Steel Wire Rope 10mm (per meter)", Category = "Tema Harbor - Heavy Rigging", Qty = 12, Price = 420.00m, Reorder = 20 }, // Low stock
-            new { Name = "Heavy Duty Steel Toe Work Boots (Size 43)", Category = "Tema Harbor - Safety Gear", Qty = 85, Price = 195.00m, Reorder = 30 },
-            new { Name = "High-Visibility Safety Vest with Pockets", Category = "Tema Harbor - Safety Gear", Qty = 150, Price = 28.00m, Reorder = 50 },
-            new { Name = "Anti-Corrosive Marine Paint 20L Grey", Category = "Tema Harbor - Paints & Protective Coatings", Qty = 14, Price = 520.00m, Reorder = 20 }, // Low stock
-            new { Name = "Two-Pack Epoxy Floor Primer 5L", Category = "Tema Harbor - Paints & Protective Coatings", Qty = 30, Price = 145.00m, Reorder = 15 },
-            new { Name = "Heavy Duty Cargo Lashing Belts 5 Ton 9m", Category = "Tema Harbor - Shipping & Storage", Qty = 65, Price = 95.00m, Reorder = 20 },
+            // Electrical & Power
+            new { Code = "PRD-1008", Name = "Copper Cable 2.5mm Roll (100m)", Cat = "Electrical & Power", Qty = 8, Price = 320.00m, Reorder = 15 }, // Low stock (8 <= 15)
+            new { Code = "PRD-1009", Name = "Schneider Circuit Breaker 63A Double Pole", Cat = "Electrical & Power", Qty = 35, Price = 55.00m, Reorder = 20 },
+            new { Code = "PRD-1010", Name = "Heavy Duty PVC Conduit Pipe 20mm x 3m", Cat = "Electrical & Power", Qty = 120, Price = 18.00m, Reorder = 60 },
+            new { Code = "PRD-1011", Name = "Industrial Extension Reel 50m Heavy Duty", Cat = "Electrical & Power", Qty = 14, Price = 380.00m, Reorder = 10 },
+            new { Code = "PRD-1012", Name = "Copper Earth Rod 5/8in x 4ft with Clamp", Cat = "Electrical & Power", Qty = 50, Price = 65.00m, Reorder = 25 },
+            new { Code = "PRD-1013", Name = "LED High Bay Industrial Lamp 150W", Cat = "Electrical & Power", Qty = 25, Price = 280.00m, Reorder = 10 },
+            new { Code = "PRD-1014", Name = "Armoured Underground Cable 4-Core 16mm", Cat = "Electrical & Power", Qty = 5, Price = 850.00m, Reorder = 12 }, // Low stock (5 <= 12)
 
-            // Kumasi Regional Depot
-            new { Name = "PVC Pressure Pipe Class E 4in x 6m", Category = "Kumasi Depot - Plumbing & Drainage", Qty = 75, Price = 58.00m, Reorder = 30 },
-            new { Name = "Solid Brass Gate Valve 2in Female Thread", Category = "Kumasi Depot - Plumbing & Drainage", Qty = 4, Price = 85.00m, Reorder = 10 }, // Low stock
-            new { Name = "Polyethylene Water Tank 1000 Litres", Category = "Kumasi Depot - Water Storage", Qty = 6, Price = 1250.00m, Reorder = 8 }, // Low stock
-            new { Name = "Submersible Deep Well Water Pump 1.5HP", Category = "Kumasi Depot - Pumps & Machinery", Qty = 10, Price = 920.00m, Reorder = 5 },
-            new { Name = "Aluzinc Corrugated Roofing Sheet 3m x 0.4mm", Category = "Kumasi Depot - Roofing & Timber", Qty = 40, Price = 160.00m, Reorder = 50 }, // Low stock
-            new { Name = "Seasoned Hardwood Timber 2x4 12ft (per piece)", Category = "Kumasi Depot - Roofing & Timber", Qty = 110, Price = 42.00m, Reorder = 40 },
-            new { Name = "Roofing Screws with Rubber Washer 65mm (Pack of 100)", Category = "Kumasi Depot - Fasteners", Qty = 95, Price = 35.00m, Reorder = 30 },
+            // Hardware & Tools
+            new { Code = "PRD-1015", Name = "Viro Solid Brass Padlock 70mm", Cat = "Hardware & Tools", Qty = 65, Price = 75.00m, Reorder = 25 },
+            new { Code = "PRD-1016", Name = "Bosch Professional Angle Grinder 9in 2200W", Cat = "Hardware & Tools", Qty = 18, Price = 380.00m, Reorder = 10 },
+            new { Code = "PRD-1017", Name = "Makita Rotary Hammer Drill 800W", Cat = "Hardware & Tools", Qty = 12, Price = 520.00m, Reorder = 8 },
+            new { Code = "PRD-1018", Name = "Drop Forged Claw Hammer 16oz Fiberglass", Cat = "Hardware & Tools", Qty = 80, Price = 42.00m, Reorder = 30 },
+            new { Code = "PRD-1019", Name = "Adjustable Heavy Duty Pipe Wrench 18in", Cat = "Hardware & Tools", Qty = 22, Price = 95.00m, Reorder = 15 },
+            new { Code = "PRD-1020", Name = "Stainless Steel Hex Wood Screws Box (500pcs)", Cat = "Hardware & Tools", Qty = 140, Price = 35.00m, Reorder = 50 },
+            new { Code = "PRD-1021", Name = "Stanley Heavy Duty Tape Measure 8m", Cat = "Hardware & Tools", Qty = 90, Price = 38.00m, Reorder = 30 },
 
-            // Takoradi Logistics Branch
-            new { Name = "Hydraulic Bottle Jack 20 Ton Industrial", Category = "Takoradi Logistics - Heavy Equipment", Qty = 5, Price = 650.00m, Reorder = 5 },
-            new { Name = "Industrial Ratchet Tie-Down Straps 50mm x 10m", Category = "Takoradi Logistics - Cargo Handling", Qty = 90, Price = 38.00m, Reorder = 30 },
-            new { Name = "Industrial Safety Helmet with Face Shield", Category = "Takoradi Logistics - Safety Gear", Qty = 0, Price = 55.00m, Reorder = 25 }, // Out of stock
-            new { Name = "Bosch Professional Angle Grinder 9in 2200W", Category = "Takoradi Logistics - Power Tools", Qty = 18, Price = 340.00m, Reorder = 12 },
-            new { Name = "Grade 304 Stainless Steel Wood Screws Box (500pcs)", Category = "Takoradi Logistics - Fasteners", Qty = 200, Price = 22.00m, Reorder = 50 },
-            new { Name = "Heavy Duty Pallet Hand Truck 2.5 Ton", Category = "Takoradi Logistics - Warehouse Equipment", Qty = 7, Price = 1850.00m, Reorder = 3 }
+            // Plumbing & Drainage
+            new { Code = "PRD-1022", Name = "PVC Pressure Pipe Class E 4in x 6m", Cat = "Plumbing & Drainage", Qty = 75, Price = 68.00m, Reorder = 30 },
+            new { Code = "PRD-1023", Name = "Solid Brass Gate Valve 2in Female Thread", Cat = "Plumbing & Drainage", Qty = 4, Price = 95.00m, Reorder = 10 }, // Low stock (4 <= 10)
+            new { Code = "PRD-1024", Name = "Polyethylene Water Tank 1000 Litres", Cat = "Plumbing & Drainage", Qty = 6, Price = 1350.00m, Reorder = 8 }, // Low stock (6 <= 8)
+            new { Code = "PRD-1025", Name = "Submersible Deep Well Water Pump 1.5HP", Cat = "Plumbing & Drainage", Qty = 10, Price = 1050.00m, Reorder = 5 },
+            new { Code = "PRD-1026", Name = "HDPE Pipe Roll 32mm PN16 (100m)", Cat = "Plumbing & Drainage", Qty = 18, Price = 460.00m, Reorder = 10 },
+            new { Code = "PRD-1027", Name = "Brass Float Valve for Water Tank 1in", Cat = "Plumbing & Drainage", Qty = 45, Price = 58.00m, Reorder = 20 },
+            new { Code = "PRD-1028", Name = "PVC Solvent Cement Glue 500ml Can", Cat = "Plumbing & Drainage", Qty = 85, Price = 32.00m, Reorder = 30 },
+
+            // Paints & Protective Coatings
+            new { Code = "PRD-1029", Name = "Anti-Corrosive Marine Paint 20L Grey", Cat = "Paints & Protective Coatings", Qty = 14, Price = 580.00m, Reorder = 20 }, // Low stock (14 <= 20)
+            new { Code = "PRD-1030", Name = "Two-Pack Epoxy Floor Primer 5L", Cat = "Paints & Protective Coatings", Qty = 32, Price = 165.00m, Reorder = 15 },
+            new { Code = "PRD-1031", Name = "Gloss Enamel Exterior Paint 20L Brilliant White", Cat = "Paints & Protective Coatings", Qty = 40, Price = 420.00m, Reorder = 20 },
+            new { Code = "PRD-1032", Name = "Bituminous Waterproofing Membrane 10m Roll", Cat = "Paints & Protective Coatings", Qty = 25, Price = 240.00m, Reorder = 15 },
+            new { Code = "PRD-1033", Name = "Mineral Turpentine Paint Thinner 5L", Cat = "Paints & Protective Coatings", Qty = 70, Price = 45.00m, Reorder = 25 },
+            new { Code = "PRD-1034", Name = "Heavy Duty Roller Paint Applicator 9in", Cat = "Paints & Protective Coatings", Qty = 110, Price = 25.00m, Reorder = 40 },
+            new { Code = "PRD-1035", Name = "Industrial Zinc Phosphate Primer 20L Red Oxide", Cat = "Paints & Protective Coatings", Qty = 22, Price = 390.00m, Reorder = 15 },
+
+            // Safety & Security Gear
+            new { Code = "PRD-1036", Name = "Heavy Duty Steel Toe Work Boots (Size 43)", Cat = "Safety & Security Gear", Qty = 85, Price = 220.00m, Reorder = 30 },
+            new { Code = "PRD-1037", Name = "High-Visibility Safety Vest with Pockets", Cat = "Safety & Security Gear", Qty = 160, Price = 32.00m, Reorder = 50 },
+            new { Code = "PRD-1038", Name = "Industrial Safety Helmet with Face Shield", Cat = "Safety & Security Gear", Qty = 0, Price = 65.00m, Reorder = 25 }, // Low stock / Out of stock (0 <= 25)
+            new { Code = "PRD-1039", Name = "Chemical Splash Safety Goggles UV Rated", Cat = "Safety & Security Gear", Qty = 130, Price = 24.00m, Reorder = 40 },
+            new { Code = "PRD-1040", Name = "Heavy Duty Nitrile Chemical Gloves Pack (12 pairs)", Cat = "Safety & Security Gear", Qty = 95, Price = 85.00m, Reorder = 35 },
+            new { Code = "PRD-1041", Name = "Full Body Safety Harness with Double Lanyard", Cat = "Safety & Security Gear", Qty = 20, Price = 340.00m, Reorder = 10 },
+            new { Code = "PRD-1042", Name = "Industrial First Aid Kit Wall Mounted (50 Persons)", Cat = "Safety & Security Gear", Qty = 15, Price = 260.00m, Reorder = 8 },
+
+            // Warehouse & Material Handling
+            new { Code = "PRD-1043", Name = "Heavy Duty Pallet Hand Truck 2.5 Ton", Cat = "Warehouse & Material Handling", Qty = 7, Price = 1950.00m, Reorder = 3 },
+            new { Code = "PRD-1044", Name = "Heavy Duty Cargo Lashing Belts 5 Ton 9m", Cat = "Warehouse & Material Handling", Qty = 70, Price = 110.00m, Reorder = 20 },
+            new { Code = "PRD-1045", Name = "Hydraulic Bottle Jack 20 Ton Industrial", Cat = "Warehouse & Material Handling", Qty = 5, Price = 690.00m, Reorder = 5 }, // Exact boundary (5 == 5)
+            new { Code = "PRD-1046", Name = "Industrial Ratchet Tie-Down Straps 50mm x 10m", Cat = "Warehouse & Material Handling", Qty = 90, Price = 45.00m, Reorder = 30 },
+            new { Code = "PRD-1047", Name = "Plastic Euro Storage Pallet 1200x800mm", Cat = "Warehouse & Material Handling", Qty = 120, Price = 140.00m, Reorder = 40 },
+            new { Code = "PRD-1048", Name = "Heavy Duty Warehouse Platform Trolley 300kg", Cat = "Warehouse & Material Handling", Qty = 16, Price = 480.00m, Reorder = 8 },
+            new { Code = "PRD-1049", Name = "Stretch Wrap Film Roll 500mm x 300m Industrial", Cat = "Warehouse & Material Handling", Qty = 85, Price = 65.00m, Reorder = 30 },
+            new { Code = "PRD-1050", Name = "Electric Chain Hoist 1 Ton with Remote", Cat = "Warehouse & Material Handling", Qty = 4, Price = 3200.00m, Reorder = 2 }
         };
 
-        foreach (var p in seedProducts)
+        foreach (var p in products)
         {
-            var branch = "Main Warehouse";
-            var category = p.Category;
-            if (p.Category.Contains(" - "))
+            var categoryId = categoryMap[p.Cat];
+
+            await connection.ExecuteAsync("""
+                INSERT INTO products (product_code, name, category_id, quantity, unit_price, reorder_level, created_at, updated_at)
+                VALUES (@Code, @Name, @CategoryId, @Qty, @Price, @Reorder, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                ON CONFLICT(product_code) DO UPDATE SET
+                    name = excluded.name,
+                    category_id = excluded.category_id,
+                    quantity = excluded.quantity,
+                    unit_price = excluded.unit_price,
+                    reorder_level = excluded.reorder_level,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+                """,
+                new
+                {
+                    p.Code,
+                    p.Name,
+                    CategoryId = categoryId,
+                    p.Qty,
+                    p.Price,
+                    p.Reorder
+                });
+
+            var productId = await connection.ExecuteScalarAsync<int>(
+                "SELECT id FROM products WHERE product_code = @Code;", new { p.Code });
+
+            // 4. Modest initial stock movement history (idempotent: only if no movements exist for this product)
+            var movementCount = await connection.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM stock_movements WHERE product_id = @ProductId;", new { ProductId = productId });
+
+            if (movementCount == 0 && p.Qty > 0)
             {
-                var parts = p.Category.Split(" - ", 2);
-                branch = parts[0].Trim();
-                category = parts[1].Trim();
-            }
-
-            var prodExists = await connection.ExecuteScalarAsync<int>(
-                "SELECT COUNT(*) FROM Products WHERE ProductName = @Name AND Branch = @Branch;",
-                new { p.Name, Branch = branch });
-
-            if (prodExists == 0)
-            {
-                var newId = await connection.ExecuteScalarAsync<int>("""
-                    INSERT INTO Products (ProductName, Branch, Category, Quantity, UnitPrice, ReorderLevel)
-                    VALUES (@Name, @Branch, @Category, @Qty, @Price, @Reorder);
-                    SELECT last_insert_rowid();
-                    """, new { p.Name, Branch = branch, Category = category, p.Qty, p.Price, p.Reorder });
-
-                // Initial Stock-In transaction log entry
                 await connection.ExecuteAsync("""
-                    INSERT INTO InventoryTransactionLogs (ProductID, TransactionType, QuantityChanged, HandledBy, Timestamp)
-                    VALUES (@ProductID, 'Stock-In', @Qty, 'manager_accra', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-                    """, new { ProductID = newId, p.Qty });
+                    INSERT INTO stock_movements (product_id, type, amount, performed_by, created_at)
+                    VALUES (@ProductId, 'STOCK_IN', @Amount, @PerformedBy, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+                    """,
+                    new
+                    {
+                        ProductId = productId,
+                        Amount = p.Qty,
+                        PerformedBy = managerId
+                    });
             }
         }
-    }
 
-    private static string HashPassword(string password)
-    {
-        var salt = RandomNumberGenerator.GetBytes(SaltSizeBytes);
-        var hash = KeyDerivation.Pbkdf2(
-            password:          password,
-            salt:              salt,
-            prf:               KeyDerivationPrf.HMACSHA256,
-            iterationCount:    Pbkdf2Iterations,
-            numBytesRequested: HashSizeBytes);
-
-        return $"{Pbkdf2Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
+        Console.WriteLine($"[SEED] Seeding completed: 2 users, {categories.Length} categories, {products.Length} products.");
     }
 }

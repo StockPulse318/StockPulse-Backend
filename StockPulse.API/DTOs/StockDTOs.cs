@@ -1,11 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace StockPulse.API.DTOs;
 
-public sealed record StockMovementRequest(int Quantity);
+public sealed record StockMovementRequest(
+    [property: JsonPropertyName("amount")] int Amount);
 
-public sealed record TransactionLogResponse(
-    int TransactionID,
-    int ProductID,
-    string TransactionType,
-    int QuantityChanged,
-    string HandledBy,
-    string Timestamp);
+public sealed record StockMovementResponse(
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("product_id")] int ProductId,
+    [property: JsonPropertyName("amount")] int Amount);

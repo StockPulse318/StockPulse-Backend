@@ -1,10 +1,10 @@
 using System.Net;
 using System.Text.Json;
+using StockPulse.API.DTOs;
 
 namespace StockPulse.API.Middleware;
 
-// Ensures every unhandled exception returns JSON — never an ASP.NET HTML error page.
-// Stack traces are only included in Development responses.
+// Ensures every unhandled exception returns consistent JSON — never an ASP.NET HTML error page.
 public sealed class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;
@@ -41,9 +41,11 @@ public sealed class ExceptionMiddleware
         context.Response.ContentType = "application/json";
         context.Response.StatusCode  = (int)HttpStatusCode.InternalServerError;
 
-        var payload = _environment.IsDevelopment()
-            ? new { error = ex.Message, detail = ex.StackTrace }
-            : new { error = "An unexpected error occurred.", detail = (string?)null };
+        var message = _environment.IsDevelopment()
+            ? ex.Message
+            : "An unexpected error occurred.";
+
+        var payload = new ErrorResponse(new ErrorDetail("INTERNAL_ERROR", message));
 
         var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
         {

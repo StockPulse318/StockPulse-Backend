@@ -11,18 +11,18 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddStockPulseBackend(
         this IServiceCollection services,
-        string databaseFilePath)
+        string? databaseFilePath = null)
     {
-        // Singleton — one instance owns the connection string and pragma config for the process lifetime.
         services.AddSingleton(new DatabaseInitializer(databaseFilePath));
 
         services.AddTransient<IUserRepository, UserRepository>();
+        services.AddTransient<ICategoryRepository, CategoryRepository>();
         services.AddTransient<IProductRepository, ProductRepository>();
-        services.AddTransient<ITransactionLogRepository, TransactionLogRepository>();
+        services.AddTransient<IStockMovementRepository, StockMovementRepository>();
 
         services.AddTransient<IAuthService, AuthService>();
+        services.AddTransient<ICategoryService, CategoryService>();
         services.AddTransient<IProductService, ProductService>();
-        services.AddTransient<ITransactionService, TransactionService>();
 
         return services;
     }

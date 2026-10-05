@@ -8,6 +8,7 @@ COPY StockPulse.Domain/StockPulse.Domain.csproj StockPulse.Domain/
 COPY StockPulse.DAL/StockPulse.DAL.csproj StockPulse.DAL/
 COPY StockPulse.BLL/StockPulse.BLL.csproj StockPulse.BLL/
 COPY StockPulse.API/StockPulse.API.csproj StockPulse.API/
+COPY StockPulse.Tests/StockPulse.Tests.csproj StockPulse.Tests/
 
 RUN dotnet restore StockPulse.sln
 

@@ -15,32 +15,48 @@ public sealed class TokenService
         _configuration = configuration;
     }
 
-    // Username and Role are embedded as claims so controllers can identify the actor
-    // from the token directly without an extra database lookup on every request.
     public string GenerateToken(User user)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
-        var secret      = jwtSettings["Secret"]
-            ?? throw new InvalidOperationException("JWT secret is not configured.");
 
-        var key         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var secret = Environment.GetEnvironmentVariable("JWT_SECRET")
+            ?? jwtSettings["Secret"]
+            ?? "stockpulse-default-super-secure-jwt-secret-key-2026-min-32-chars";
+
+        var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER")
+            ?? jwtSettings["Issuer"]
+            ?? "StockPulse";
+
+        var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
+            ?? jwtSettings["Audience"]
+            ?? "StockPulseClient";
+
+        var lifetimeHoursStr = Environment.GetEnvironmentVariable("TOKEN_LIFETIME_HOURS")
+            ?? jwtSettings["ExpiryHours"]
+            ?? "8";
+
+        if (!int.TryParse(lifetimeHoursStr, out var lifetimeHours) || lifetimeHours <= 0)
+        {
+            lifetimeHours = 8;
+        }
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var expiry      = int.Parse(jwtSettings["ExpiryHours"] ?? "8");
 
         var claims = new[]
         {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Role, user.Role),
-            new Claim("branch", user.AssignedBranch),
             new Claim("fullName", user.FullName),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
         var token = new JwtSecurityToken(
-            issuer:            jwtSettings["Issuer"],
-            audience:          jwtSettings["Audience"],
-            claims:            claims,
-            expires:           DateTime.UtcNow.AddHours(expiry),
+            issuer: issuer,
+            audience: audience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(lifetimeHours),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

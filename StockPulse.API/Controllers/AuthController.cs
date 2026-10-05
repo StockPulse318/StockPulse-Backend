@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using StockPulse.API.DTOs;
 using StockPulse.API.Services;
 using StockPulse.BLL.Interfaces;
@@ -7,7 +8,8 @@ using StockPulse.BLL.Interfaces;
 namespace StockPulse.API.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("auth")]
+[Route("api/auth")]
 public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
@@ -19,15 +21,30 @@ public sealed class AuthController : ControllerBase
         _tokenService = tokenService;
     }
 
-    /// <summary>POST api/auth/login</summary>
+    /// <summary>POST /auth/login</summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("login-policy")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
+        if (request is null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+        {
+            return BadRequest(new ErrorResponse(new ErrorDetail("VALIDATION_ERROR", "Username and password are required.")));
+        }
+
         var result = await _authService.LoginAsync(request.Username, request.Password);
 
         if (result.IsFailure)
-            return Unauthorized(new { error = result.ErrorMessage });
+        {
+            var statusCode = result.ErrorCode switch
+            {
+                "ACCOUNT_DEACTIVATED" => 403,
+                "VALIDATION_ERROR"    => 400,
+                _                     => 401
+            };
+
+            return StatusCode(statusCode, new ErrorResponse(new ErrorDetail(result.ErrorCode ?? "UNAUTHORIZED", result.ErrorMessage ?? "Login failed.")));
+        }
 
         var token = _tokenService.GenerateToken(result.Value!);
 
@@ -35,101 +52,6 @@ public sealed class AuthController : ControllerBase
             token,
             result.Value!.Username,
             result.Value.Role,
-            result.Value.FullName,
-            result.Value.AssignedBranch));
+            result.Value.FullName));
     }
-
-    /// <summary>POST api/auth/users — Warehouse Manager only</summary>
-    [HttpPost("users")]
-    [Authorize]
-    public async Task<IActionResult> RegisterUser([FromBody] RegisterUserRequest request)
-    {
-        var actorUsername = GetActorUsername();
-        var result = await _authService.RegisterUserAsync(
-            actorUsername,
-            request.Username,
-            request.Password,
-            request.Role,
-            request.FullName,
-            request.AssignedBranch);
-
-        if (result.IsFailure)
-            return BadRequest(new { error = result.ErrorMessage });
-
-        return StatusCode(201);
-    }
-
-    /// <summary>PUT api/auth/users/{username} — Warehouse Manager only</summary>
-    [HttpPut("users/{username}")]
-    [Authorize]
-    public async Task<IActionResult> UpdateUser(string username, [FromBody] UpdateUserRequest request)
-    {
-        var actorUsername = GetActorUsername();
-        var result = await _authService.UpdateUserAsync(
-            actorUsername,
-            username,
-            request.FullName,
-            request.Role,
-            request.AssignedBranch,
-            request.IsActive);
-
-        if (result.IsFailure)
-            return BadRequest(new { error = result.ErrorMessage });
-
-        return NoContent();
-    }
-
-    /// <summary>POST api/auth/users/{username}/reset-password — Warehouse Manager only</summary>
-    [HttpPost("users/{username}/reset-password")]
-    [Authorize]
-    public async Task<IActionResult> ResetPassword(string username, [FromBody] ResetPasswordRequest request)
-    {
-        var actorUsername = GetActorUsername();
-        var result = await _authService.ResetPasswordAsync(actorUsername, username, request.NewPassword);
-
-        if (result.IsFailure)
-            return BadRequest(new { error = result.ErrorMessage });
-
-        return NoContent();
-    }
-
-    /// <summary>GET api/auth/users — Warehouse Manager only</summary>
-    [HttpGet("users")]
-    [Authorize]
-    public async Task<IActionResult> GetAllUsers()
-    {
-        var actorUsername = GetActorUsername();
-        var result = await _authService.GetAllUsersAsync(actorUsername);
-
-        if (result.IsFailure)
-            return Forbid();
-
-        var response = result.Value!.Select(u => new UserResponse(
-            u.Username,
-            u.Role,
-            u.FullName,
-            u.AssignedBranch,
-            u.IsActive,
-            u.CreatedAt));
-
-        return Ok(response);
-    }
-
-    /// <summary>DELETE api/auth/users/{username} — Warehouse Manager only</summary>
-    [HttpDelete("users/{username}")]
-    [Authorize]
-    public async Task<IActionResult> DeleteUser(string username)
-    {
-        var actorUsername = GetActorUsername();
-        var result = await _authService.DeleteUserAsync(actorUsername, username);
-
-        if (result.IsFailure)
-            return BadRequest(new { error = result.ErrorMessage });
-
-        return NoContent();
-    }
-
-    private string GetActorUsername() =>
-        User.Identity?.Name
-            ?? throw new InvalidOperationException("Authenticated user identity is missing from token.");
 }

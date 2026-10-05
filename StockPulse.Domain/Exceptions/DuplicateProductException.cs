@@ -1,17 +1,17 @@
 namespace StockPulse.Domain.Exceptions;
 
-/// <summary>
-/// Raised when an insert or rename attempt would violate the UNIQUE constraint
-/// on Products.ProductName. Caught at the service layer to return a clean Result
-/// rather than leaking a raw SQLite exception to the caller.
-/// </summary>
 public sealed class DuplicateProductException : Exception
 {
-    public string ProductName { get; }
+    public string FieldName { get; }
+    public string Value { get; }
 
-    public DuplicateProductException(string productName)
-        : base($"A product named '{productName}' already exists.")
+    public DuplicateProductException(string fieldName, string value)
+        : base($"Product with {fieldName} '{value}' already exists.")
     {
-        ProductName = productName;
+        FieldName = fieldName;
+        Value = value;
     }
+
+    public static DuplicateProductException ForCode(string code) => new("product_code", code);
+    public static DuplicateProductException ForName(string name) => new("name", name);
 }

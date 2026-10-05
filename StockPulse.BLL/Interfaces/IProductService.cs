@@ -6,14 +6,19 @@ namespace StockPulse.BLL.Interfaces;
 public interface IProductService
 {
     Task<Result<Product>> GetByIdAsync(int productId);
-    Task<Result<IEnumerable<Product>>> GetAllAsync();
-    Task<Result<IEnumerable<Product>>> SearchByNameAsync(string partialName);
+    Task<Result<(IEnumerable<Product> Items, int TotalCount)>> GetPagedAsync(
+        int page,
+        int limit,
+        string? sortBy = null,
+        string? sortOrder = null,
+        int? categoryId = null,
+        string? q = null);
     Task<Result<IEnumerable<Product>>> GetLowStockAsync();
 
-    Task<Result<int>> AddProductAsync(string actorUsername, Product product);
-    Task<Result> UpdateProductAsync(string actorUsername, Product product);
-    Task<Result> DeleteProductAsync(string actorUsername, int productId);
+    Task<Result<Product>> AddProductAsync(string actorRole, Product product);
+    Task<Result<Product>> UpdateProductAsync(string actorRole, Product product);
+    Task<Result> DeleteProductAsync(string actorRole, int productId);
 
-    Task<Result<IEnumerable<string>>> GetBranchesAsync();
-    Task<Result<IEnumerable<string>>> GetCategoriesAsync();
+    Task<Result> StockInAsync(int productId, int amount, int performedByUserId);
+    Task<Result> StockOutAsync(int productId, int amount, int performedByUserId);
 }

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StockPulse.API.DTOs;
@@ -6,46 +7,83 @@ using StockPulse.BLL.Interfaces;
 namespace StockPulse.API.Controllers;
 
 [ApiController]
-[Route("api/products/{productId:int}/stock")]
+[Route("products/{id:int}")]
+[Route("api/products/{id:int}")]
 [Authorize]
 public sealed class StockController : ControllerBase
 {
-    private readonly ITransactionService _transactionService;
+    private readonly IProductService _productService;
 
-    public StockController(ITransactionService transactionService)
+    public StockController(IProductService productService)
     {
-        _transactionService = transactionService;
+        _productService = productService;
     }
 
-    /// <summary>POST api/products/{productId}/stock/in</summary>
-    [HttpPost("in")]
-    public async Task<IActionResult> StockIn(int productId, [FromBody] StockMovementRequest request)
+    /// <summary>POST /products/{id}/stock-in</summary>
+    [HttpPost("stock-in")]
+    public async Task<IActionResult> StockIn(int id, [FromBody] StockMovementRequest request)
     {
-        var actorUsername = GetActorUsername();
-        var result = await _transactionService.StockInAsync(actorUsername, productId, request.Quantity);
+        if (request is null || request.Amount <= 0)
+        {
+            return BadRequest(new ErrorResponse(new ErrorDetail("VALIDATION_ERROR", "Amount must be a positive integer greater than zero.")));
+        }
+
+        var userId = GetUserId();
+        var result = await _productService.StockInAsync(id, request.Amount, userId);
 
         if (result.IsFailure)
-            return BadRequest(new { error = result.ErrorMessage });
+        {
+            var statusCode = result.ErrorCode switch
+            {
+                "NOT_FOUND"        => 404,
+                "VALIDATION_ERROR" => 400,
+                _                  => 400
+            };
+            return StatusCode(statusCode, new ErrorResponse(new ErrorDetail(result.ErrorCode ?? "BAD_REQUEST", result.ErrorMessage ?? "Stock-In failed.")));
+        }
 
-        return Ok(new { message = $"{request.Quantity} units added to product {productId}." });
+        return Ok(new StockMovementResponse(
+            $"{request.Amount} units added to product ID {id}.",
+            id,
+            request.Amount));
     }
 
-    /// <summary>POST api/products/{productId}/stock/out</summary>
-    [HttpPost("out")]
-    public async Task<IActionResult> StockOut(int productId, [FromBody] StockMovementRequest request)
+    /// <summary>POST /products/{id}/stock-out</summary>
+    [HttpPost("stock-out")]
+    public async Task<IActionResult> StockOut(int id, [FromBody] StockMovementRequest request)
     {
-        var actorUsername = GetActorUsername();
-        var result = await _transactionService.StockOutAsync(actorUsername, productId, request.Quantity);
+        if (request is null || request.Amount <= 0)
+        {
+            return BadRequest(new ErrorResponse(new ErrorDetail("VALIDATION_ERROR", "Amount must be a positive integer greater than zero.")));
+        }
 
-        // 409 Conflict is the correct status for a business rule violation on a valid request —
-        // the request itself is well-formed, but the current state of the resource prevents it.
+        var userId = GetUserId();
+        var result = await _productService.StockOutAsync(id, request.Amount, userId);
+
         if (result.IsFailure)
-            return Conflict(new { error = result.ErrorMessage });
+        {
+            var statusCode = result.ErrorCode switch
+            {
+                "NOT_FOUND"          => 404,
+                "INSUFFICIENT_STOCK" => 409,
+                "VALIDATION_ERROR"   => 400,
+                _                    => 400
+            };
+            return StatusCode(statusCode, new ErrorResponse(new ErrorDetail(result.ErrorCode ?? "BAD_REQUEST", result.ErrorMessage ?? "Stock-Out failed.")));
+        }
 
-        return Ok(new { message = $"{request.Quantity} units removed from product {productId}." });
+        return Ok(new StockMovementResponse(
+            $"{request.Amount} units removed from product ID {id}.",
+            id,
+            request.Amount));
     }
 
-    private string GetActorUsername() =>
-        User.Identity?.Name
-            ?? throw new InvalidOperationException("Authenticated user identity is missing from token.");
+    private int GetUserId()
+    {
+        var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var id))
+            return id;
+
+        return 1;
+    }
 }

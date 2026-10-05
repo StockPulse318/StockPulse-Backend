@@ -8,47 +8,52 @@ public sealed class UserRepository : IUserRepository
 {
     private readonly DatabaseInitializer _db;
 
+    private const string SelectColumns =
+        "SELECT id AS Id, username AS Username, full_name AS FullName, password_hash AS PasswordHash, role AS Role, is_active AS IsActive, created_at AS CreatedAt FROM users";
+
     public UserRepository(DatabaseInitializer db)
     {
         _db = db;
     }
 
-    private const string SelectAllColumns =
-        "SELECT Username, PasswordHash, Role, FullName, AssignedBranch, IsActive, CreatedAt FROM Users";
+    public async Task<User?> GetByIdAsync(int id)
+    {
+        await using var connection = await _db.CreateConnectionAsync();
+        return await connection.QuerySingleOrDefaultAsync<User>(
+            $"{SelectColumns} WHERE id = @Id;",
+            new { Id = id });
+    }
 
     public async Task<User?> GetByUsernameAsync(string username)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QuerySingleOrDefaultAsync<User>(
-            $"{SelectAllColumns} WHERE Username = @Username;",
-            new { Username = username });
+            $"{SelectColumns} WHERE username = @Username COLLATE NOCASE;",
+            new { Username = username.Trim() });
     }
 
     public async Task<IEnumerable<User>> GetAllAsync()
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         return await connection.QueryAsync<User>(
-            $"{SelectAllColumns} ORDER BY Username;");
+            $"{SelectColumns} ORDER BY username COLLATE NOCASE;");
     }
 
-    public async Task AddAsync(User user)
+    public async Task<int> AddAsync(User user)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
-        await connection.ExecuteAsync(
+        return await connection.ExecuteScalarAsync<int>(
             """
-            INSERT INTO Users (Username, PasswordHash, Role, FullName, AssignedBranch, IsActive, CreatedAt)
-            VALUES (@Username, @PasswordHash, @Role, @FullName, @AssignedBranch, @IsActive, @CreatedAt);
+            INSERT INTO users (username, full_name, password_hash, role, is_active, created_at)
+            VALUES (@Username, @FullName, @PasswordHash, @Role, @IsActive, @CreatedAt);
+            SELECT last_insert_rowid();
             """,
             new
             {
-                user.Username,
+                Username = user.Username.Trim(),
+                FullName = user.FullName.Trim(),
                 user.PasswordHash,
                 user.Role,
-                user.FullName,
-                user.AssignedBranch,
                 IsActive = user.IsActive ? 1 : 0,
                 user.CreatedAt
             });
@@ -57,41 +62,30 @@ public sealed class UserRepository : IUserRepository
     public async Task UpdateAsync(User user)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         await connection.ExecuteAsync(
             """
-            UPDATE Users
-            SET FullName       = @FullName,
-                Role           = @Role,
-                AssignedBranch = @AssignedBranch,
-                IsActive       = @IsActive
-            WHERE Username     = @Username;
+            UPDATE users
+            SET full_name     = @FullName,
+                password_hash = @PasswordHash,
+                role          = @Role,
+                is_active     = @IsActive
+            WHERE id = @Id;
             """,
             new
             {
-                user.FullName,
+                FullName = user.FullName.Trim(),
+                user.PasswordHash,
                 user.Role,
-                user.AssignedBranch,
                 IsActive = user.IsActive ? 1 : 0,
-                user.Username
+                user.Id
             });
     }
 
-    public async Task UpdatePasswordAsync(string username, string passwordHash)
+    public async Task DeleteAsync(int id)
     {
         await using var connection = await _db.CreateConnectionAsync();
-
         await connection.ExecuteAsync(
-            "UPDATE Users SET PasswordHash = @PasswordHash WHERE Username = @Username;",
-            new { Username = username, PasswordHash = passwordHash });
-    }
-
-    public async Task DeleteAsync(string username)
-    {
-        await using var connection = await _db.CreateConnectionAsync();
-
-        await connection.ExecuteAsync(
-            "DELETE FROM Users WHERE Username = @Username;",
-            new { Username = username });
+            "DELETE FROM users WHERE id = @Id;",
+            new { Id = id });
     }
 }
