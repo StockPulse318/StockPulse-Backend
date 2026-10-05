@@ -17,8 +17,7 @@ obj/
 .nuget/
 packages/
 
-# SQLite database files — never commit live data
-*.db
+# SQLite temporary journal / lock files
 *.db-shm
 *.db-wal
 

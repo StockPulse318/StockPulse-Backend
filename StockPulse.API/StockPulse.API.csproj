@@ -21,4 +21,11 @@
     <ProjectReference Include="..\StockPulse.BLL\StockPulse.BLL.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="stockpulse.db">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

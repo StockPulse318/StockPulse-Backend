@@ -30,18 +30,25 @@ var dbPath = Environment.GetEnvironmentVariable("DATABASE_PATH")
 builder.Services.AddStockPulseBackend(dbPath);
 
 // JWT Authentication configuration
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secret = Environment.GetEnvironmentVariable("JWT_SECRET")
-    ?? jwtSettings["Secret"]
-    ?? "stockpulse-default-super-secure-jwt-secret-key-2026-min-32-chars";
+var envSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
+var configuredSecret = builder.Configuration["JwtSettings:Secret"];
+var secret = !string.IsNullOrWhiteSpace(envSecret)
+    ? envSecret
+    : (!string.IsNullOrWhiteSpace(configuredSecret)
+        ? configuredSecret
+        : "stockpulse-default-super-secure-jwt-secret-key-2026-min-32-chars");
 
-var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER")
-    ?? jwtSettings["Issuer"]
-    ?? "StockPulse";
+var envIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER");
+var configuredIssuer = builder.Configuration["JwtSettings:Issuer"];
+var issuer = !string.IsNullOrWhiteSpace(envIssuer)
+    ? envIssuer
+    : (!string.IsNullOrWhiteSpace(configuredIssuer) ? configuredIssuer : "StockPulse");
 
-var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
-    ?? jwtSettings["Audience"]
-    ?? "StockPulseClient";
+var envAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE");
+var configuredAudience = builder.Configuration["JwtSettings:Audience"];
+var audience = !string.IsNullOrWhiteSpace(envAudience)
+    ? envAudience
+    : (!string.IsNullOrWhiteSpace(configuredAudience) ? configuredAudience : "StockPulseClient");
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
