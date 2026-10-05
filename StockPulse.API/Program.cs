@@ -9,10 +9,18 @@ using StockPulse.API.DTOs;
 using StockPulse.API.Middleware;
 using StockPulse.API.Seeding;
 using StockPulse.API.Services;
+using Dapper;
 using StockPulse.BLL.Extensions;
 using StockPulse.DAL;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Dynamically bind to PORT if provided by hosting platform (Railway, Render, etc.)
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
 
 // Read database path from DATABASE_PATH environment variable (or fallback to appsettings / default)
 var dbPath = Environment.GetEnvironmentVariable("DATABASE_PATH")
@@ -169,11 +177,12 @@ if (args.Length > 0)
     }
 }
 
-// Ensure database schema migrations are applied at startup (never seeds automatically)
+// Ensure database schema migrations and seed data are applied at startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
     await db.MigrateAsync();
+    await DatabaseSeeder.SeedAsync(db, app.Configuration);
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
