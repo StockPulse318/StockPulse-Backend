@@ -48,12 +48,22 @@ public sealed class DatabaseInitializer
             CREATE TABLE IF NOT EXISTS Products (
                 ProductID    INTEGER PRIMARY KEY AUTOINCREMENT,
                 ProductName  TEXT    NOT NULL UNIQUE,
+                Branch       TEXT    NOT NULL DEFAULT 'Main Warehouse',
                 Category     TEXT    NOT NULL,
                 Quantity     INTEGER NOT NULL DEFAULT 0 CHECK(Quantity >= 0),
                 UnitPrice    REAL    NOT NULL CHECK(UnitPrice > 0),
                 ReorderLevel INTEGER NOT NULL CHECK(ReorderLevel >= 0)
             );
             """);
+
+        try
+        {
+            await connection.ExecuteAsync("ALTER TABLE Products ADD COLUMN Branch TEXT NOT NULL DEFAULT 'Main Warehouse';");
+        }
+        catch
+        {
+            // Column already exists
+        }
 
         // ON DELETE CASCADE keeps the logs table clean when a product is removed.
         await connection.ExecuteAsync("""

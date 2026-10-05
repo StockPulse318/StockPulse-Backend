@@ -10,7 +10,7 @@ public sealed class ProductRepository : IProductRepository
     private readonly DatabaseInitializer _db;
 
     private const string SelectAllColumns =
-        "SELECT ProductID, ProductName, Category, Quantity, UnitPrice, ReorderLevel FROM Products";
+        "SELECT ProductID, ProductName, Branch, Category, Quantity, UnitPrice, ReorderLevel FROM Products";
 
     public ProductRepository(DatabaseInitializer db)
     {
@@ -62,13 +62,14 @@ public sealed class ProductRepository : IProductRepository
         // INSERT then SELECT last_insert_rowid() in one round trip to get the generated ID.
         return await connection.ExecuteScalarAsync<int>(
             """
-            INSERT INTO Products (ProductName, Category, Quantity, UnitPrice, ReorderLevel)
-            VALUES (@ProductName, @Category, @Quantity, @UnitPrice, @ReorderLevel);
+            INSERT INTO Products (ProductName, Branch, Category, Quantity, UnitPrice, ReorderLevel)
+            VALUES (@ProductName, @Branch, @Category, @Quantity, @UnitPrice, @ReorderLevel);
             SELECT last_insert_rowid();
             """,
             new
             {
                 product.ProductName,
+                product.Branch,
                 product.Category,
                 product.Quantity,
                 product.UnitPrice,
@@ -86,6 +87,7 @@ public sealed class ProductRepository : IProductRepository
             """
             UPDATE Products
             SET ProductName  = @ProductName,
+                Branch       = @Branch,
                 Category     = @Category,
                 UnitPrice    = @UnitPrice,
                 ReorderLevel = @ReorderLevel
@@ -94,6 +96,7 @@ public sealed class ProductRepository : IProductRepository
             new
             {
                 product.ProductName,
+                product.Branch,
                 product.Category,
                 product.UnitPrice,
                 product.ReorderLevel,
@@ -107,6 +110,20 @@ public sealed class ProductRepository : IProductRepository
         await connection.ExecuteAsync(
             "DELETE FROM Products WHERE ProductID = @ProductID;",
             new { ProductID = productId });
+    }
+
+    public async Task<IEnumerable<string>> GetBranchesAsync()
+    {
+        await using var connection = await _db.CreateConnectionAsync();
+        return await connection.QueryAsync<string>(
+            "SELECT DISTINCT Branch FROM Products WHERE Branch IS NOT NULL AND Branch != '' ORDER BY Branch COLLATE NOCASE;");
+    }
+
+    public async Task<IEnumerable<string>> GetCategoriesAsync()
+    {
+        await using var connection = await _db.CreateConnectionAsync();
+        return await connection.QueryAsync<string>(
+            "SELECT DISTINCT Category FROM Products WHERE Category IS NOT NULL AND Category != '' ORDER BY Category COLLATE NOCASE;");
     }
 
     public async Task AdjustQuantityAsync(

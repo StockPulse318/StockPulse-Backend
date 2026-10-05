@@ -66,16 +66,51 @@ public sealed class ProductsController : ControllerBase
         return Ok(MapToResponse(result.Value!));
     }
 
+    /// <summary>GET api/products/branches</summary>
+    [HttpGet("branches")]
+    public async Task<IActionResult> GetBranches()
+    {
+        var result = await _productService.GetBranchesAsync();
+
+        if (result.IsFailure)
+            return StatusCode(500, new { error = result.ErrorMessage });
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>GET api/products/categories</summary>
+    [HttpGet("categories")]
+    public async Task<IActionResult> GetCategories()
+    {
+        var result = await _productService.GetCategoriesAsync();
+
+        if (result.IsFailure)
+            return StatusCode(500, new { error = result.ErrorMessage });
+
+        return Ok(result.Value);
+    }
+
     /// <summary>POST api/products — Warehouse Manager only</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateProductRequest request)
     {
         var actorUsername = GetActorUsername();
 
+        var branch = !string.IsNullOrWhiteSpace(request.Branch)
+            ? request.Branch.Trim()
+            : request.Category.Contains(" - ")
+                ? request.Category.Split(" - ", 2)[0].Trim()
+                : "Main Warehouse";
+
+        var category = request.Category.Contains(" - ") && string.IsNullOrWhiteSpace(request.Branch)
+            ? request.Category.Split(" - ", 2)[1].Trim()
+            : request.Category.Trim();
+
         var product = new Product
         {
             ProductName  = request.ProductName,
-            Category     = request.Category,
+            Branch       = branch,
+            Category     = category,
             Quantity     = request.Quantity,
             UnitPrice    = request.UnitPrice,
             ReorderLevel = request.ReorderLevel
@@ -95,13 +130,24 @@ public sealed class ProductsController : ControllerBase
     {
         var actorUsername = GetActorUsername();
 
+        var branch = !string.IsNullOrWhiteSpace(request.Branch)
+            ? request.Branch.Trim()
+            : request.Category.Contains(" - ")
+                ? request.Category.Split(" - ", 2)[0].Trim()
+                : "Main Warehouse";
+
+        var category = request.Category.Contains(" - ") && string.IsNullOrWhiteSpace(request.Branch)
+            ? request.Category.Split(" - ", 2)[1].Trim()
+            : request.Category.Trim();
+
         // Quantity is intentionally excluded from UpdateProductRequest —
         // stock levels are only modified through the /stock endpoints.
         var product = new Product
         {
             ProductID    = id,
             ProductName  = request.ProductName,
-            Category     = request.Category,
+            Branch       = branch,
+            Category     = category,
             UnitPrice    = request.UnitPrice,
             ReorderLevel = request.ReorderLevel
         };
@@ -132,5 +178,5 @@ public sealed class ProductsController : ControllerBase
             ?? throw new InvalidOperationException("Authenticated user identity is missing from token.");
 
     private static ProductResponse MapToResponse(Product p) =>
-        new(p.ProductID, p.ProductName, p.Category, p.Quantity, p.UnitPrice, p.ReorderLevel, p.IsLowStock);
+        new(p.ProductID, p.ProductName, p.Category, p.Quantity, p.UnitPrice, p.ReorderLevel, p.IsLowStock, p.Branch);
 }

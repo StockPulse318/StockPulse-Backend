@@ -170,6 +170,32 @@ public sealed class ProductService : IProductService
         }
     }
 
+    public async Task<Result<IEnumerable<string>>> GetBranchesAsync()
+    {
+        try
+        {
+            var branches = await _productRepository.GetBranchesAsync();
+            return Result<IEnumerable<string>>.Success(branches);
+        }
+        catch (Exception ex)
+        {
+            return Result<IEnumerable<string>>.Failure("Failed to retrieve branches.", ex);
+        }
+    }
+
+    public async Task<Result<IEnumerable<string>>> GetCategoriesAsync()
+    {
+        try
+        {
+            var categories = await _productRepository.GetCategoriesAsync();
+            return Result<IEnumerable<string>>.Success(categories);
+        }
+        catch (Exception ex)
+        {
+            return Result<IEnumerable<string>>.Failure("Failed to retrieve categories.", ex);
+        }
+    }
+
     private async Task<User> ResolveActorAsync(string actorUsername)
     {
         return await _userRepository.GetByUsernameAsync(actorUsername)

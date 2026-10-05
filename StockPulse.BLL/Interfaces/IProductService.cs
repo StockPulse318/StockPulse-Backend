@@ -13,4 +13,7 @@ public interface IProductService
     Task<Result<int>> AddProductAsync(string actorUsername, Product product);
     Task<Result> UpdateProductAsync(string actorUsername, Product product);
     Task<Result> DeleteProductAsync(string actorUsername, int productId);
+
+    Task<Result<IEnumerable<string>>> GetBranchesAsync();
+    Task<Result<IEnumerable<string>>> GetCategoriesAsync();
 }
